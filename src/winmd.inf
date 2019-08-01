@@ -1,0 +1,99 @@
+;;;
+;;; WinMD
+;;;
+;;;
+;;; Copyright (c) 2019 Mark Harmstone
+;;;
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = Volume
+ClassGuid   = {71a27cdd-812a-11d0-bec7-08002be2092f}
+Provider    = %Me%
+DriverVer   = 07/31/2019,0.1.0.0
+CatalogFile = winmd.cat
+
+[DestinationDirs]
+DefaultDestDir          = 12
+WinMD.DriverFiles       = 12            ;%windir%\system32\drivers
+
+;;
+;; Default install sections
+;;
+
+[DefaultInstall]
+OptionDesc  = %ServiceDescription%
+CopyFiles   = WinMD.DriverFiles
+CopyINF     = winmd.inf
+
+[DefaultInstall.Services]
+AddService  = %ServiceName%,0x802,WinMD.Service
+
+[Manufacturer]
+%Me%=Standard,NTamd64,NTx86
+
+[Standard.NTamd64]
+%VolumeName% = WinMD_Install, WinMDVolume
+%ControllerName% = WinMD_Install, ROOT\winmd
+
+[Standard.NTx86]
+%VolumeName% = WinMD_Install, WinMDVolume
+%ControllerName% = WinMD_Install, ROOT\winmd
+
+[WinMD_Install]
+OptionDesc   = %ServiceDescription%
+CopyFiles    = WinMD.DriverFiles
+
+[WinMD_Install.Services]
+AddService  = %ServiceName%,2,WinMD.Service
+
+;;
+;; Default uninstall sections
+;;
+
+[DefaultUninstall]
+DelFiles   = WinMD.DriverFiles
+
+[DefaultUninstall.Services]
+DelService = %ServiceName%,0x200      ;Ensure service is stopped before deleting
+
+;
+; Services Section
+;
+
+[WinMD.Service]
+DisplayName      = %ServiceName%
+Description      = %ServiceDescription%
+ServiceBinary    = %12%\%DriverName%.sys    ;%windir%\system32\drivers\
+ServiceType      = 1
+StartType        = 1                        ;SERVICE_SYSTEM_START
+ErrorControl     = 1
+
+;
+; Copy Files
+;
+
+[WinMD.DriverFiles]
+%DriverName%.sys
+
+[SourceDisksFiles]
+winmd.sys = 1,,
+
+[SourceDisksNames.x86]
+1 = %DiskId1%,,,\x86
+
+[SourceDisksNames.amd64]
+1 = %DiskId1%,,,\x64
+
+;;
+;; String Section
+;;
+
+[Strings]
+Me                      = "Mark Harmstone"
+ServiceDescription      = "WinMD driver"
+ServiceName             = "winmd"
+DriverName              = "winmd"
+DiskId1                 = "winmd Device Installation Disk"
+VolumeName              = "WinMD volume"
+ControllerName          = "WinMD controller"
