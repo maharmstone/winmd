@@ -44,6 +44,7 @@ Todo
 * creating new sets from Windows
 * RAID4/5/6 journal
 * write-intent bitmaps
+* version 0.9 superblocks
 
 Installation
 ------------
