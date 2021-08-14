@@ -1072,13 +1072,15 @@ end:
 
 NTSTATUS set_pdo::flush_partial_chunk_raid45(partial_chunk* pc, RTL_BITMAP* valid_bmp) {
     NTSTATUS Status;
-    klist<io_context> ctxs;
+    LIST_ENTRY ctxs;
     ULONG index;
     auto runlength = RtlFindFirstRunClear(valid_bmp, &index);
     auto parity = get_parity_volume(pc->offset);
     auto parity_dev = child_list[parity];
     uint32_t data_disks = array_info.raid_disks - 1;
     uint32_t chunk_size = array_info.chunksize * 512;
+
+    InitializeListHead(&ctxs);
 
     while (runlength != 0) {
         for (uint32_t i = 1; i < data_disks; i++) {
@@ -1087,13 +1089,20 @@ NTSTATUS set_pdo::flush_partial_chunk_raid45(partial_chunk* pc, RTL_BITMAP* vali
 
         uint64_t stripe_start = (pc->offset / data_disks) + (index * 512) + (parity_dev->disk_info.data_offset * 512);
 
-        ctxs.emplace_back_np(parity_dev, stripe_start, stripe_start + (runlength * 512));
+        auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
+        if (!last) {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto fail;
+        }
 
-        auto last = &ctxs.back();
+        new (last) io_context(parity_dev, stripe_start, stripe_start + (runlength * 512));
+
+        InsertTailList(&ctxs, &last->list_entry);
 
         if (!NT_SUCCESS(last->Status)) {
             ERR("io_context constructor returned %08x\n", last->Status);
-            return last->Status;
+            Status = last->Status;
+            goto fail;
         }
 
         last->va2 = pc->data + (index * 512);
@@ -1101,55 +1110,66 @@ NTSTATUS set_pdo::flush_partial_chunk_raid45(partial_chunk* pc, RTL_BITMAP* vali
         runlength = RtlFindNextForwardRunClear(valid_bmp, index + runlength, &index);
     }
 
-    if (!ctxs.empty()) {
-        LIST_ENTRY* le = ctxs.list.Flink;
-        while (le != &ctxs.list) {
-            auto& ctx = ctxs.entry(le);
+    if (!IsListEmpty(&ctxs)) {
+        LIST_ENTRY* le = ctxs.Flink;
+        while (le != &ctxs) {
+            auto ctx = CONTAINING_RECORD(le, io_context, list_entry);
 
-            auto IrpSp = IoGetNextIrpStackLocation(ctx.Irp);
+            auto IrpSp = IoGetNextIrpStackLocation(ctx->Irp);
             IrpSp->MajorFunction = IRP_MJ_WRITE;
 
-            ctx.mdl = IoAllocateMdl(ctx.va2, (ULONG)(ctx.stripe_end - ctx.stripe_start), false, false, nullptr);
-            if (!ctx.mdl) {
+            ctx->mdl = IoAllocateMdl(ctx->va2, (ULONG)(ctx->stripe_end - ctx->stripe_start), false, false, nullptr);
+            if (!ctx->mdl) {
                 ERR("IoAllocateMdl failed\n");
-                return STATUS_INSUFFICIENT_RESOURCES;
+                Status = STATUS_INSUFFICIENT_RESOURCES;
+                goto fail;
             }
 
-            MmBuildMdlForNonPagedPool(ctx.mdl);
+            MmBuildMdlForNonPagedPool(ctx->mdl);
 
-            ctx.Irp->MdlAddress = ctx.mdl;
+            ctx->Irp->MdlAddress = ctx->mdl;
 
-            IrpSp->FileObject = ctx.sc->fileobj;
-            IrpSp->Parameters.Write.ByteOffset.QuadPart = ctx.stripe_start;
-            IrpSp->Parameters.Write.Length = (ULONG)(ctx.stripe_end - ctx.stripe_start);
+            IrpSp->FileObject = ctx->sc->fileobj;
+            IrpSp->Parameters.Write.ByteOffset.QuadPart = ctx->stripe_start;
+            IrpSp->Parameters.Write.Length = (ULONG)(ctx->stripe_end - ctx->stripe_start);
 
-            ctx.Status = IoCallDriver(ctx.sc->device, ctx.Irp);
+            ctx->Status = IoCallDriver(ctx->sc->device, ctx->Irp);
 
             le = le->Flink;
         }
 
         Status = STATUS_SUCCESS;
 
-        le = ctxs.list.Flink;
-        while (le != &ctxs.list) {
-            auto& ctx = ctxs.entry(le);
+        while (!IsListEmpty(&ctxs)) {
+            auto ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
 
-            if (ctx.Status == STATUS_PENDING) {
-                KeWaitForSingleObject(&ctx.Event, Executive, KernelMode, false, nullptr);
-                ctx.Status = ctx.iosb.Status;
+            if (ctx->Status == STATUS_PENDING) {
+                KeWaitForSingleObject(&ctx->Event, Executive, KernelMode, false, nullptr);
+                ctx->Status = ctx->iosb.Status;
             }
 
-            if (!NT_SUCCESS(ctx.Status)) {
-                ERR("writing returned %08x\n", ctx.Status);
-                Status = ctx.Status;
+            if (!NT_SUCCESS(ctx->Status)) {
+                ERR("writing returned %08x\n", ctx->Status);
+                Status = ctx->Status;
             }
 
-            le = le->Flink;
+            ctx->~io_context();
+            ExFreePool(ctx);
         }
 
         if (!NT_SUCCESS(Status))
-            return Status;
+            goto fail;
     }
 
     return STATUS_SUCCESS;
+
+fail:
+    while (!IsListEmpty(&ctxs)) {
+        io_context* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
+
+        ctx->~io_context();
+        ExFreePool(ctx);
+    }
+
+    return Status;
 }
