@@ -316,6 +316,9 @@ NTSTATUS set_device::pnp(PIRP Irp, bool* no_complete) {
 
 NTSTATUS set_pdo::AddDevice() {
     NTSTATUS Status;
+    UNICODE_STRING volname;
+    PDEVICE_OBJECT voldev;
+    set_device* sd;
 
     exclusive_eresource l(&lock);
 
@@ -324,18 +327,13 @@ NTSTATUS set_pdo::AddDevice() {
         return STATUS_INTERNAL_ERROR;
     }
 
-    UNICODE_STRING volname;
-
     volname.Length = volname.MaximumLength = sizeof(device_prefix) + (36 * sizeof(char16_t));
 
-    np_buffer buf(volname.Length);
-
-    if (!buf.buf) {
+    volname.Buffer = (WCHAR*)ExAllocatePoolWithTag(NonPagedPool, volname.Length, ALLOC_TAG);
+    if (!volname.Buffer) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-
-    volname.Buffer = (WCHAR*)buf.buf;
 
     RtlCopyMemory(volname.Buffer, device_prefix, sizeof(device_prefix) - sizeof(char16_t));
 
@@ -352,10 +350,11 @@ NTSTATUS set_pdo::AddDevice() {
 
     *p = u'}';
 
-    PDEVICE_OBJECT voldev;
-
     Status = IoCreateDevice(drvobj, sizeof(set_device), &volname, FILE_DEVICE_DISK,
                             RtlIsNtDdiVersionAvailable(NTDDI_WIN8) ? FILE_DEVICE_ALLOW_APPCONTAINER_TRAVERSAL : 0, false, &voldev);
+
+    ExFreePool(volname.Buffer);
+
     if (!NT_SUCCESS(Status)) {
         ERR("IoCreateDevice returned %08x\n", Status);
         return Status;
@@ -363,7 +362,9 @@ NTSTATUS set_pdo::AddDevice() {
 
     voldev->Flags |= DO_DIRECT_IO;
 
-    auto sd = new (voldev->DeviceExtension) set_device(this, voldev);
+    new (voldev->DeviceExtension) set_device(this, voldev);
+
+    sd = (set_device*)voldev->DeviceExtension;
 
     Status = IoRegisterDeviceInterface(pdo, &GUID_DEVINTERFACE_VOLUME, nullptr, &bus_name);
     if (!NT_SUCCESS(Status))
