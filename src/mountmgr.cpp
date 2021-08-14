@@ -91,15 +91,15 @@ static char get_drive_letter2(MOUNTMGR_MOUNT_POINTS* points) {
 char mountmgr::get_drive_letter(const UNICODE_STRING& name) {
     NTSTATUS Status;
     USHORT mmmp_len = sizeof(MOUNTMGR_MOUNT_POINT) + name.Length;
+    char ret;
 
-    np_buffer buf(mmmp_len);
+    auto mmmp = (MOUNTMGR_MOUNT_POINT*)ExAllocatePoolWithTag(NonPagedPool, mmmp_len, ALLOC_TAG);
 
-    if (!buf.buf) {
+    if (!mmmp) {
         ERR("out of memory\n");
         return 0;
     }
 
-    auto mmmp = (MOUNTMGR_MOUNT_POINT*)buf.buf;
     RtlZeroMemory(mmmp, mmmp_len);
 
     mmmp->DeviceNameOffset = sizeof(MOUNTMGR_MOUNT_POINT);
@@ -114,29 +114,37 @@ char mountmgr::get_drive_letter(const UNICODE_STRING& name) {
                                    mmmp, mmmp_len, &points, sizeof(points));
 
     if (Status == STATUS_BUFFER_OVERFLOW && points.Size > 0) {
-        np_buffer buf2(points.Size);
+        auto points2 = (MOUNTMGR_MOUNT_POINTS*)ExAllocatePoolWithTag(NonPagedPool, points.Size, ALLOC_TAG);
 
-        if (!buf2.buf) {
+        if (!points2) {
             ERR("out of memory\n");
-            return 0;
+            ret = 0;
+            goto end;
         }
-
-        auto points2 = (MOUNTMGR_MOUNT_POINTS*)buf2.buf;
 
         Status = NtDeviceIoControlFile(h, nullptr, nullptr, nullptr, &iosb, IOCTL_MOUNTMGR_QUERY_POINTS,
                                        mmmp, mmmp_len, points2, points.Size);
 
         if (!NT_SUCCESS(Status)) {
             ERR("IOCTL_MOUNTMGR_QUERY_POINTS returned %08x\n", Status);
-            return 0;
+            ExFreePool(points2);
+            ret = 0;
+            goto end;
         }
 
-        return get_drive_letter2(points2);
+        ret = get_drive_letter2(points2);
+
+        ExFreePool(points2);
     } else if (!NT_SUCCESS(Status)) {
         ERR("IOCTL_MOUNTMGR_QUERY_POINTS returned %08x\n", Status);
-        return 0;
+        ret = 0;
     } else
-        return get_drive_letter2(&points);
+        ret = get_drive_letter2(&points);
+
+end:
+    ExFreePool(mmmp);
+
+    return ret;
 }
 
 NTSTATUS mountmgr::remove_drive_letter(char c) {
