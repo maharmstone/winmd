@@ -151,14 +151,13 @@ NTSTATUS mountmgr::remove_drive_letter(char c) {
     NTSTATUS Status;
     USHORT mmmp_len = sizeof(MOUNTMGR_MOUNT_POINT) + sizeof(drive_letter_prefix) + sizeof(WCHAR);
 
-    np_buffer buf(mmmp_len);
+    auto mmmp = (MOUNTMGR_MOUNT_POINT*)ExAllocatePoolWithTag(NonPagedPool, mmmp_len, ALLOC_TAG);
 
-    if (!buf.buf) {
+    if (!mmmp) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    auto mmmp = (MOUNTMGR_MOUNT_POINT*)buf.buf;
     RtlZeroMemory(mmmp, mmmp_len);
 
     mmmp->SymbolicLinkNameOffset = sizeof(MOUNTMGR_MOUNT_POINT);
@@ -177,22 +176,23 @@ NTSTATUS mountmgr::remove_drive_letter(char c) {
                                    mmmp, mmmp_len, &points, sizeof(points));
 
     if (Status == STATUS_BUFFER_OVERFLOW && points.Size > 0) {
-        np_buffer buf2(points.Size);
-
-        if (!buf2.buf) {
+        auto points2 = (MOUNTMGR_MOUNT_POINTS*)ExAllocatePoolWithTag(NonPagedPool, points.Size, ALLOC_TAG);
+        if (!points2) {
             ERR("out of memory\n");
+            ExFreePool(mmmp);
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
-        auto points2 = (MOUNTMGR_MOUNT_POINTS*)buf2.buf;
-
         Status = NtDeviceIoControlFile(h, nullptr, nullptr, nullptr, &iosb, IOCTL_MOUNTMGR_DELETE_POINTS,
                                        mmmp, mmmp_len, points2, points.Size);
+
+        ExFreePool(points2);
     }
 
     if (!NT_SUCCESS(Status))
         ERR("IOCTL_MOUNTMGR_DELETE_POINTS returned %08x\n", Status);
 
+    ExFreePool(mmmp);
+
     return Status;
 }
-
