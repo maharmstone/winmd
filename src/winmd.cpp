@@ -23,9 +23,7 @@
 #include <mountdev.h>
 #include <new>
 
-#ifndef _MSC_VER
-#include <cpuid.h>
-#else
+#ifdef _MSC_VER
 #include <intrin.h>
 #endif
 
@@ -1141,15 +1139,9 @@ NTSTATUS drv_power(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 }
 
 static void check_cpu() {
-#ifndef _MSC_VER
-    unsigned int cpuInfo[4];
-    __get_cpuid(1, &cpuInfo[0], &cpuInfo[1], &cpuInfo[2], &cpuInfo[3]);
-    have_sse2 = cpuInfo[3] & bit_SSE2;
-#else
     int cpuInfo[4];
    __cpuid(cpuInfo, 1);
    have_sse2 = cpuInfo[3] & (1 << 26);
-#endif
 }
 
 static NTSTATUS drv_close(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
