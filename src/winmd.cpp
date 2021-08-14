@@ -570,28 +570,23 @@ void volume_arrival(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
 
     uint32_t buflen = sector_align((uint32_t)sizeof(mdraid_superblock), sector_size);
 
-    p_buffer buf(buflen);
-
-    if (!buf.buf) {
+    auto sb = (mdraid_superblock*)ExAllocatePoolWithTag(PagedPool, buflen, ALLOC_TAG);
+    if (!sb) {
         ERR("out of memory\n");
         ObDereferenceObject(fileobj);
         return;
     }
 
-    auto sb = (mdraid_superblock*)buf.buf;
-
     // version 1.2
     if (volume_arrival2(devobj, fileobj, RAID_12_OFFSET, buflen, sb)) {
         device_found(devobj, fileobj, devpath, sb);
-        ObDereferenceObject(fileobj);
-        return;
+        goto end;
     }
 
     // version 1.1
     if (volume_arrival2(devobj, fileobj, 0, buflen, sb)) {
         device_found(devobj, fileobj, devpath, sb);
-        ObDereferenceObject(fileobj);
-        return;
+        goto end;
     }
 
     // version 1.0
@@ -609,7 +604,10 @@ void volume_arrival(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
             device_found(devobj, fileobj, devpath, sb);
     }
 
+end:
     ObDereferenceObject(fileobj);
+
+    ExFreePool(sb);
 }
 
 NTSTATUS set_device::close(PIRP) {

@@ -307,7 +307,6 @@ public:
 };
 
 typedef kernel_buffer<NonPagedPool> np_buffer;
-typedef kernel_buffer<PagedPool> p_buffer;
 
 class set_device : device {
 public:
