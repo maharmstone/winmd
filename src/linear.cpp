@@ -21,31 +21,42 @@ NTSTATUS set_pdo::io_linear2(PIRP Irp, uint64_t offset, uint32_t start_disk, boo
     NTSTATUS Status;
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
     uint32_t length = write ? IrpSp->Parameters.Write.Length : IrpSp->Parameters.Read.Length;
-    klist<io_context> ctxs;
+    LIST_ENTRY ctxs;
     auto va = (uint8_t*)MmGetMdlVirtualAddress(Irp->MdlAddress);
+
+    InitializeListHead(&ctxs);
 
     for (uint32_t i = start_disk; i < array_info.raid_disks; i++) {
         auto io_length = (uint32_t)min(length, (child_list[i]->disk_info.data_size * 512) - offset);
 
-        ctxs.emplace_back_np(child_list[i], offset + (child_list[i]->disk_info.data_offset * 512), io_length);
-        auto& last = ctxs.back();
-
-        if (!NT_SUCCESS(last.Status)) {
-            ERR("io_context constructor returned %08x\n", last.Status);
-            return last.Status;
+        auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
+        if (!last) {
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto fail;
         }
 
-        last.mdl = IoAllocateMdl(va, io_length, false, false, nullptr);
-        if (!last.mdl) {
+        new (last) io_context(child_list[i], offset + (child_list[i]->disk_info.data_offset * 512), io_length);
+
+        InsertTailList(&ctxs, &last->list_entry);
+
+        if (!NT_SUCCESS(last->Status)) {
+            ERR("io_context constructor returned %08x\n", last->Status);
+            Status = last->Status;
+            goto fail;
+        }
+
+        last->mdl = IoAllocateMdl(va, io_length, false, false, nullptr);
+        if (!last->mdl) {
             ERR("IoAllocateMdl failed\n");
-            return STATUS_INSUFFICIENT_RESOURCES;
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            goto fail;
         }
 
-        last.Irp->MdlAddress = last.mdl;
+        last->Irp->MdlAddress = last->mdl;
 
-        IoBuildPartialMdl(Irp->MdlAddress, last.mdl, va, io_length);
+        IoBuildPartialMdl(Irp->MdlAddress, last->mdl, va, io_length);
 
-        auto IrpSp2 = IoGetNextIrpStackLocation(last.Irp);
+        auto IrpSp2 = IoGetNextIrpStackLocation(last->Irp);
 
         IrpSp2->FileObject = child_list[i]->fileobj;
 
@@ -59,7 +70,7 @@ NTSTATUS set_pdo::io_linear2(PIRP Irp, uint64_t offset, uint32_t start_disk, boo
             IrpSp2->Parameters.Read.Length = io_length;
         }
 
-        last.Status = IoCallDriver(last.sc->device, last.Irp);
+        last->Status = IoCallDriver(last->sc->device, last->Irp);
 
         length -= io_length;
 
@@ -72,21 +83,31 @@ NTSTATUS set_pdo::io_linear2(PIRP Irp, uint64_t offset, uint32_t start_disk, boo
 
     Status = STATUS_SUCCESS;
 
-    LIST_ENTRY* le = ctxs.list.Flink;
-    while (le != &ctxs.list) {
-        auto& ctx = ctxs.entry(le);
+    while (!IsListEmpty(&ctxs)) {
+        auto ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
 
-        if (ctx.Status == STATUS_PENDING) {
-            KeWaitForSingleObject(&ctx.Event, Executive, KernelMode, false, nullptr);
-            ctx.Status = ctx.iosb.Status;
+        if (ctx->Status == STATUS_PENDING) {
+            KeWaitForSingleObject(&ctx->Event, Executive, KernelMode, false, nullptr);
+            ctx->Status = ctx->iosb.Status;
         }
 
-        if (!NT_SUCCESS(ctx.Status)) {
-            ERR("device returned %08x\n", ctx.Status);
-            Status = ctx.Status;
+        if (!NT_SUCCESS(ctx->Status)) {
+            ERR("device returned %08x\n", ctx->Status);
+            Status = ctx->Status;
         }
 
-        le = le->Flink;
+        ctx->~io_context();
+        ExFreePool(ctx);
+    }
+
+    return Status;
+
+fail:
+    while (!IsListEmpty(&ctxs)) {
+        io_context* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
+
+        ctx->~io_context();
+        ExFreePool(ctx);
     }
 
     return Status;
