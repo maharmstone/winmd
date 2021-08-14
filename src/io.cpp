@@ -234,24 +234,24 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
     uint32_t chunk_size = array_info.chunksize * 512;
     bool asymmetric = array_info.layout == RAID_LAYOUT_LEFT_ASYMMETRIC || array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC;
 
-    np_buffer valid(sector_align(array_info.chunksize, 32) / 8);
-    if (!valid.buf) {
+    InitializeListHead(&ctxs);
+
+    auto valid = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, sector_align(array_info.chunksize, 32) / 8, ALLOC_TAG);
+    if (!valid) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     RTL_BITMAP valid_bmp;
 
-    RtlInitializeBitMap(&valid_bmp, (ULONG*)valid.buf, array_info.chunksize);
+    RtlInitializeBitMap(&valid_bmp, (ULONG*)valid, array_info.chunksize);
 
     // FIXME - what if array_info.chunksize not multiple of 8?
-    RtlCopyMemory(valid.buf, pc->bmp.Buffer, array_info.chunksize / 8);
+    RtlCopyMemory(valid, pc->bmp.Buffer, array_info.chunksize / 8);
 
     for (uint32_t i = 1; i < data_disks; i++) {
-        do_and(valid.buf, (uint8_t*)pc->bmp.Buffer + (i * array_info.chunksize / 8), array_info.chunksize / 8);
+        do_and(valid, (uint8_t*)pc->bmp.Buffer + (i * array_info.chunksize / 8), array_info.chunksize / 8);
     }
-
-    InitializeListHead(&ctxs);
 
     {
         auto parity = get_parity_volume(pc->offset);
@@ -273,7 +273,7 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
                             auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
                             if (!last) {
                                 Status = STATUS_INSUFFICIENT_RESOURCES;
-                                goto fail;
+                                goto end;
                             }
 
                             new (last) io_context(child_list[stripe], stripe_start, stripe_start + 512);
@@ -283,7 +283,7 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
                             if (!NT_SUCCESS(last->Status)) {
                                 ERR("io_context constructor returned %08x\n", last->Status);
                                 Status = last->Status;
-                                goto fail;
+                                goto end;
                             }
 
                             last->va2 = pc->data + (i * chunk_size) + (j * 512);
@@ -319,7 +319,7 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
                 if (!ctx->mdl) {
                     ERR("IoAllocateMdl failed\n");
                     Status = STATUS_INSUFFICIENT_RESOURCES;
-                    goto fail;
+                    goto end;
                 }
 
                 MmBuildMdlForNonPagedPool(ctx->mdl);
@@ -355,22 +355,24 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
             }
 
             if (!NT_SUCCESS(Status))
-                goto fail;
+                goto end;
         }
     }
 
     if (array_info.level == RAID_LEVEL_6)
-        return flush_partial_chunk_raid6(pc, &valid_bmp);
+        Status = flush_partial_chunk_raid6(pc, &valid_bmp);
     else
-        return flush_partial_chunk_raid45(pc, &valid_bmp);
+        Status = flush_partial_chunk_raid45(pc, &valid_bmp);
 
-fail:
+end:
     while (!IsListEmpty(&ctxs)) {
         io_context* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
 
         ctx->~io_context();
         ExFreePool(ctx);
     }
+
+    ExFreePool(valid);
 
     return Status;
 }
