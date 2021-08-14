@@ -1099,9 +1099,8 @@ NTSTATUS set_pdo::flush_partial_chunk_raid6(partial_chunk* pc, RTL_BITMAP* valid
     uint32_t chunk_size = array_info.chunksize * 512;
     bool asymmetric = array_info.layout == RAID_LAYOUT_LEFT_ASYMMETRIC || array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC;
 
-    np_buffer q(chunk_size);
-
-    if (!q.buf) {
+    auto q = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, chunk_size, ALLOC_TAG);
+    if (!q) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -1112,21 +1111,21 @@ NTSTATUS set_pdo::flush_partial_chunk_raid6(partial_chunk* pc, RTL_BITMAP* valid
         if (asymmetric && q_num != 0 && q_num != 1 && q_num != array_info.raid_disks - 1) {
             uint32_t stripe = (parity + array_info.raid_disks - 1) % array_info.raid_disks;
 
-            RtlCopyMemory(q.buf + (index * 512), pc->data + (stripe * chunk_size) + (index * 512), runlength * 512);
+            RtlCopyMemory(q + (index * 512), pc->data + (stripe * chunk_size) + (index * 512), runlength * 512);
 
             for (uint32_t i = 1; i < data_disks; i++) {
                 stripe = (stripe + array_info.raid_disks - 3) % (array_info.raid_disks - 2);
 
-                galois_double(q.buf + (index * 512), runlength * 512);
-                do_xor(q.buf + (index * 512), pc->data + (stripe * chunk_size) + (index * 512), runlength * 512);
+                galois_double(q + (index * 512), runlength * 512);
+                do_xor(q + (index * 512), pc->data + (stripe * chunk_size) + (index * 512), runlength * 512);
             }
         } else {
             for (uint32_t i = 0; i < data_disks; i++) {
                 if (i == 0)
-                    RtlCopyMemory(q.buf + (index * 512), pc->data + ((data_disks - 1) * chunk_size) + (index * 512), runlength * 512);
+                    RtlCopyMemory(q + (index * 512), pc->data + ((data_disks - 1) * chunk_size) + (index * 512), runlength * 512);
                 else {
-                    galois_double(q.buf + (index * 512), runlength * 512);
-                    do_xor(q.buf + (index * 512), pc->data + ((data_disks - i - 1) * chunk_size) + (index * 512), runlength * 512);
+                    galois_double(q + (index * 512), runlength * 512);
+                    do_xor(q + (index * 512), pc->data + ((data_disks - i - 1) * chunk_size) + (index * 512), runlength * 512);
                 }
             }
         }
@@ -1141,7 +1140,7 @@ NTSTATUS set_pdo::flush_partial_chunk_raid6(partial_chunk* pc, RTL_BITMAP* valid
             auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
             if (!last) {
                 Status = STATUS_INSUFFICIENT_RESOURCES;
-                goto fail;
+                goto end;
             }
 
             new (last) io_context(parity_dev, stripe_start, stripe_start + (runlength * 512));
@@ -1151,7 +1150,7 @@ NTSTATUS set_pdo::flush_partial_chunk_raid6(partial_chunk* pc, RTL_BITMAP* valid
             if (!NT_SUCCESS(last->Status)) {
                 ERR("io_context constructor returned %08x\n", last->Status);
                 Status = last->Status;
-                goto fail;
+                goto end;
             }
 
             last->va2 = pc->data + (index * 512);
@@ -1163,7 +1162,7 @@ NTSTATUS set_pdo::flush_partial_chunk_raid6(partial_chunk* pc, RTL_BITMAP* valid
             auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
             if (!last) {
                 Status = STATUS_INSUFFICIENT_RESOURCES;
-                goto fail;
+                goto end;
             }
 
             new (last) io_context(q_dev, stripe_start, stripe_start + (runlength * 512));
@@ -1173,10 +1172,10 @@ NTSTATUS set_pdo::flush_partial_chunk_raid6(partial_chunk* pc, RTL_BITMAP* valid
             if (!NT_SUCCESS(last->Status)) {
                 ERR("io_context constructor returned %08x\n", last->Status);
                 Status = last->Status;
-                goto fail;
+                goto end;
             }
 
-            last->va2 = q.buf + (index * 512);
+            last->va2 = q + (index * 512);
         }
 
         runlength = RtlFindNextForwardRunClear(valid_bmp, index + runlength, &index);
@@ -1194,7 +1193,7 @@ NTSTATUS set_pdo::flush_partial_chunk_raid6(partial_chunk* pc, RTL_BITMAP* valid
             if (!ctx->mdl) {
                 ERR("IoAllocateMdl failed\n");
                 Status = STATUS_INSUFFICIENT_RESOURCES;
-                goto fail;
+                goto end;
             }
 
             MmBuildMdlForNonPagedPool(ctx->mdl);
@@ -1230,22 +1229,24 @@ NTSTATUS set_pdo::flush_partial_chunk_raid6(partial_chunk* pc, RTL_BITMAP* valid
         }
 
         if (!NT_SUCCESS(Status))
-            goto fail;
+            goto end;
     }
 
 #ifdef DEBUG_PARANOID
     paranoid_raid6_check(pc->offset, chunk_size * data_disks);
 #endif
 
-    return STATUS_SUCCESS;
+    Status = STATUS_SUCCESS;
 
-fail:
+end:
     while (!IsListEmpty(&ctxs)) {
         io_context* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
 
         ctx->~io_context();
         ExFreePool(ctx);
     }
+
+    ExFreePool(q);
 
     return Status;
 }
