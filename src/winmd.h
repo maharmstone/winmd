@@ -240,19 +240,6 @@ public:
     }
 
     template<typename... Args>
-    NTSTATUS emplace_back(Args... args) {
-        auto buf = (klist_entry<T>*)ExAllocatePoolWithTag(PagedPool, sizeof(klist_entry<T>), ALLOC_TAG);
-        if (!buf)
-            return STATUS_INSUFFICIENT_RESOURCES;
-
-        new (&buf->t) T(args...);
-
-        InsertTailList(&list, &buf->list_entry);
-
-        return STATUS_SUCCESS;
-    }
-
-    template<typename... Args>
     NTSTATUS emplace_back_np(Args... args) {
         auto buf = (klist_entry<T>*)ExAllocatePoolWithTag(NonPagedPool, sizeof(klist_entry<T>), ALLOC_TAG);
         if (!buf)
@@ -273,75 +260,8 @@ public:
         return CONTAINING_RECORD(le, klist_entry<T>, list_entry)->t;
     }
 
-    const T& entry(LIST_ENTRY* le) const {
-        return CONTAINING_RECORD(le, klist_entry<T>, list_entry)->t;
-    }
-
-    T& front() {
-        return entry(list.Flink);
-    }
-
     T& back() {
         return entry(list.Blink);
-    }
-
-    void pop_back() {
-        if (empty())
-            return;
-
-        auto t = CONTAINING_RECORD(RemoveTailList(&list), klist_entry<T>, list_entry);
-
-        t->t.T::~T();
-
-        ExFreePool(t);
-    }
-
-    NTSTATUS check_status() {
-        if (empty())
-            return STATUS_SUCCESS;
-
-        LIST_ENTRY* le = list.Flink;
-        while (le != &list) {
-            const auto& t = entry(le);
-
-            if (!NT_SUCCESS(t.Status))
-                return t.Status;
-
-            le = le->Flink;
-        }
-
-        return STATUS_SUCCESS;
-    }
-
-    klist<T>& operator=(const klist<T>& other) {
-        LIST_ENTRY* le;
-
-        while (!IsListEmpty(&list)) {
-            auto t = CONTAINING_RECORD(RemoveHeadList(&list), klist_entry<T>, list_entry);
-
-            t->t.T::~T();
-
-            ExFreePool(t);
-        }
-
-        le = other.list.Flink;
-        while (le != &other.list) {
-            auto ent = CONTAINING_RECORD(le, klist_entry<T>, list_entry);
-
-            auto buf = (klist_entry<T>*)ExAllocatePoolWithTag(PagedPool, sizeof(klist_entry<T>), ALLOC_TAG);
-            if (!buf) {
-                Status = STATUS_INSUFFICIENT_RESOURCES;
-                return *this;
-            }
-
-            new (&buf->t) T(ent->t);
-
-            InsertTailList(&list, &buf->list_entry);
-
-            le = le->Flink;
-        }
-
-        return *this;
     }
 
     LIST_ENTRY list;
