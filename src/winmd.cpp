@@ -62,7 +62,7 @@ typedef struct {
     PIO_WORKITEM work_item;
 } pnp_callback_context;
 
-static void do_pnp_callback(PDEVICE_OBJECT, PVOID con) {
+static void __stdcall do_pnp_callback(PDEVICE_OBJECT, PVOID con) {
     auto context = (pnp_callback_context*)con;
 
     context->func(context->DriverObject, &context->name);
@@ -113,7 +113,7 @@ typedef struct {
     IO_STATUS_BLOCK iosb;
 } read_context;
 
-static NTSTATUS read_completion(PDEVICE_OBJECT, PIRP Irp, PVOID conptr) {
+static NTSTATUS __stdcall read_completion(PDEVICE_OBJECT, PIRP Irp, PVOID conptr) {
     auto context = (read_context*)conptr;
 
     context->iosb = Irp->IoStatus;
@@ -714,7 +714,7 @@ void volume_removal(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
     }
 }
 
-static NTSTATUS volume_notification(PVOID NotificationStructure, PVOID Context) {
+static NTSTATUS __stdcall volume_notification(PVOID NotificationStructure, PVOID Context) {
     DEVICE_INTERFACE_CHANGE_NOTIFICATION* dicn = (DEVICE_INTERFACE_CHANGE_NOTIFICATION*)NotificationStructure;
     PDRIVER_OBJECT DriverObject = (PDRIVER_OBJECT)Context;
 
@@ -1285,7 +1285,7 @@ static NTSTATUS drv_system_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     return Status;
 }
 
-extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
+extern "C" NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
     NTSTATUS Status;
 
     drvobj = DriverObject;

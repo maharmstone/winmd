@@ -398,7 +398,7 @@ void set_pdo::flush_thread() {
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
-void flush_thread(void* context) {
+void __stdcall flush_thread(void* context) {
     auto sd = (set_pdo*)context;
 
     sd->flush_thread();

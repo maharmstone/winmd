@@ -385,7 +385,7 @@ NTSTATUS set_pdo::AddDevice() {
     return STATUS_SUCCESS;
 }
 
-NTSTATUS AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject) {
+NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject) {
     TRACE("(%p, %p)\n", DriverObject, PhysicalDeviceObject);
 
     set_pdo* sd = nullptr;

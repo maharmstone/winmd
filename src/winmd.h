@@ -536,13 +536,13 @@ bool is_top_level(PIRP Irp);
 // io.cpp
 NTSTATUS drv_read(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS drv_write(PDEVICE_OBJECT DeviceObject, PIRP Irp);
-void flush_thread(void* context);
+void __stdcall flush_thread(void* context);
 NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx);
 void do_xor(uint8_t* buf1, uint8_t* buf2, uint32_t len);
 
 // pnp.cpp
 NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp);
-NTSTATUS AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject);
+NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject);
 
 class io_context {
 public:
