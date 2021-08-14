@@ -226,6 +226,7 @@ NTSTATUS drv_read(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
 NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
     NTSTATUS Status;
+    LIST_ENTRY ctxs;
 
     TRACE("(%llx)\n", pc->offset);
 
@@ -250,9 +251,9 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
         do_and(valid.buf, (uint8_t*)pc->bmp.Buffer + (i * array_info.chunksize / 8), array_info.chunksize / 8);
     }
 
-    {
-        klist<io_context> ctxs;
+    InitializeListHead(&ctxs);
 
+    {
         auto parity = get_parity_volume(pc->offset);
         uint32_t stripe = get_physical_stripe(0, parity);
 
@@ -269,12 +270,20 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
                         if (last && last->stripe_end == stripe_start)
                             last->stripe_end += 512;
                         else {
-                            ctxs.emplace_back_np(child_list[stripe], stripe_start, stripe_start + 512);
-                            last = &ctxs.back();
+                            auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
+                            if (!last) {
+                                Status = STATUS_INSUFFICIENT_RESOURCES;
+                                goto fail;
+                            }
+
+                            new (last) io_context(child_list[stripe], stripe_start, stripe_start + 512);
+
+                            InsertTailList(&ctxs, &last->list_entry);
 
                             if (!NT_SUCCESS(last->Status)) {
                                 ERR("io_context constructor returned %08x\n", last->Status);
-                                return last->Status;
+                                Status = last->Status;
+                                goto fail;
                             }
 
                             last->va2 = pc->data + (i * chunk_size) + (j * 512);
@@ -298,54 +307,55 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
                 stripe = (stripe + 1) % array_info.raid_disks;
         }
 
-        if (!ctxs.empty()) {
-            LIST_ENTRY* le = ctxs.list.Flink;
-            while (le != &ctxs.list) {
-                auto& ctx = ctxs.entry(le);
+        if (!IsListEmpty(&ctxs)) {
+            LIST_ENTRY* le = ctxs.Flink;
+            while (le != &ctxs) {
+                io_context* ctx = CONTAINING_RECORD(le, io_context, list_entry);
 
-                auto IrpSp = IoGetNextIrpStackLocation(ctx.Irp);
+                auto IrpSp = IoGetNextIrpStackLocation(ctx->Irp);
                 IrpSp->MajorFunction = IRP_MJ_READ;
 
-                ctx.mdl = IoAllocateMdl(ctx.va2, (ULONG)(ctx.stripe_end - ctx.stripe_start), false, false, nullptr);
-                if (!ctx.mdl) {
+                ctx->mdl = IoAllocateMdl(ctx->va2, (ULONG)(ctx->stripe_end - ctx->stripe_start), false, false, nullptr);
+                if (!ctx->mdl) {
                     ERR("IoAllocateMdl failed\n");
-                    return STATUS_INSUFFICIENT_RESOURCES;
+                    Status = STATUS_INSUFFICIENT_RESOURCES;
+                    goto fail;
                 }
 
-                MmBuildMdlForNonPagedPool(ctx.mdl);
+                MmBuildMdlForNonPagedPool(ctx->mdl);
 
-                ctx.Irp->MdlAddress = ctx.mdl;
+                ctx->Irp->MdlAddress = ctx->mdl;
 
-                IrpSp->FileObject = ctx.sc->fileobj;
-                IrpSp->Parameters.Read.ByteOffset.QuadPart = ctx.stripe_start;
-                IrpSp->Parameters.Read.Length = (ULONG)(ctx.stripe_end - ctx.stripe_start);
+                IrpSp->FileObject = ctx->sc->fileobj;
+                IrpSp->Parameters.Read.ByteOffset.QuadPart = ctx->stripe_start;
+                IrpSp->Parameters.Read.Length = (ULONG)(ctx->stripe_end - ctx->stripe_start);
 
-                ctx.Status = IoCallDriver(ctx.sc->device, ctx.Irp);
+                ctx->Status = IoCallDriver(ctx->sc->device, ctx->Irp);
 
                 le = le->Flink;
             }
 
             Status = STATUS_SUCCESS;
 
-            le = ctxs.list.Flink;
-            while (le != &ctxs.list) {
-                auto& ctx = ctxs.entry(le);
+            while (!IsListEmpty(&ctxs)) {
+                io_context* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
 
-                if (ctx.Status == STATUS_PENDING) {
-                    KeWaitForSingleObject(&ctx.Event, Executive, KernelMode, false, nullptr);
-                    ctx.Status = ctx.iosb.Status;
+                if (ctx->Status == STATUS_PENDING) {
+                    KeWaitForSingleObject(&ctx->Event, Executive, KernelMode, false, nullptr);
+                    ctx->Status = ctx->iosb.Status;
                 }
 
-                if (!NT_SUCCESS(ctx.Status)) {
-                    ERR("reading returned %08x\n", ctx.Status);
-                    Status = ctx.Status;
+                if (!NT_SUCCESS(ctx->Status)) {
+                    ERR("reading returned %08x\n", ctx->Status);
+                    Status = ctx->Status;
                 }
 
-                le = le->Flink;
+                ctx->~io_context();
+                ExFreePool(ctx);
             }
 
             if (!NT_SUCCESS(Status))
-                return Status;
+                goto fail;
         }
     }
 
@@ -353,6 +363,16 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
         return flush_partial_chunk_raid6(pc, &valid_bmp);
     else
         return flush_partial_chunk_raid45(pc, &valid_bmp);
+
+fail:
+    while (!IsListEmpty(&ctxs)) {
+        io_context* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
+
+        ctx->~io_context();
+        ExFreePool(ctx);
+    }
+
+    return Status;
 }
 
 void set_pdo::flush_chunks() {

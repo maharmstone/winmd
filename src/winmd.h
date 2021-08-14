@@ -592,4 +592,5 @@ public:
     PFN_NUMBER* pfnp;
     bool first;
     uint64_t stripe_pos;
+    LIST_ENTRY list_entry;
 };
