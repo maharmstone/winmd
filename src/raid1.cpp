@@ -42,21 +42,21 @@ NTSTATUS read_raid1(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     return Status;
 }
 
-NTSTATUS set_pdo::write_raid1(PIRP Irp) {
+NTSTATUS write_raid1(set_pdo* pdo, PIRP Irp) {
     NTSTATUS Status;
 
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
-    auto ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * array_info.raid_disks, ALLOC_TAG);
+    auto ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlZeroMemory(ctxs, sizeof(io_context) * array_info.raid_disks);
+    RtlZeroMemory(ctxs, sizeof(io_context) * pdo->array_info.raid_disks);
 
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
-        ctxs[i].Irp = IoAllocateIrp(child_list[i]->device->StackSize, false);
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
+        ctxs[i].Irp = IoAllocateIrp(pdo->child_list[i]->device->StackSize, false);
 
         if (!ctxs[i].Irp) {
             ERR("IoAllocateIrp failed\n");
@@ -66,12 +66,12 @@ NTSTATUS set_pdo::write_raid1(PIRP Irp) {
 
         auto IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
         IrpSp2->MajorFunction = IRP_MJ_WRITE;
-        IrpSp2->FileObject = child_list[i]->fileobj;
+        IrpSp2->FileObject = pdo->child_list[i]->fileobj;
 
         ctxs[i].Irp->MdlAddress = Irp->MdlAddress;
 
         IrpSp2->Parameters.Write.Length = IrpSp->Parameters.Write.Length;
-        IrpSp2->Parameters.Write.ByteOffset.QuadPart = IrpSp->Parameters.Write.ByteOffset.QuadPart + (child_list[i]->disk_info.data_offset * 512);
+        IrpSp2->Parameters.Write.ByteOffset.QuadPart = IrpSp->Parameters.Write.ByteOffset.QuadPart + (pdo->child_list[i]->disk_info.data_offset * 512);
 
         ctxs[i].Irp->UserIosb = &ctxs[i].iosb;
 
@@ -81,15 +81,15 @@ NTSTATUS set_pdo::write_raid1(PIRP Irp) {
         IoSetCompletionRoutine(ctxs[i].Irp, io_completion, &ctxs[i], true, true, true);
     }
 
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
-        ctxs[i].Status = IoCallDriver(child_list[i]->device, ctxs[i].Irp);
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
+        ctxs[i].Status = IoCallDriver(pdo->child_list[i]->device, ctxs[i].Irp);
         if (!NT_SUCCESS(ctxs[i].Status))
             ERR("IoCallDriver returned %08x\n", ctxs[i].Status);
     }
 
     Status = STATUS_SUCCESS;
 
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].Status == STATUS_PENDING) {
             KeWaitForSingleObject(&ctxs[i].Event, Executive, KernelMode, false, nullptr);
             ctxs[i].Status = ctxs[i].iosb.Status;
@@ -100,7 +100,7 @@ NTSTATUS set_pdo::write_raid1(PIRP Irp) {
     }
 
 end:
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].Irp)
             IoFreeIrp(ctxs[i].Irp);
     }

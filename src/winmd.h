@@ -301,7 +301,6 @@ private:
     NTSTATUS read_raid10_odd(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid10_offset(PIRP Irp, bool* no_complete);
     NTSTATUS read_linear(PIRP Irp, bool* no_complete);
-    NTSTATUS write_raid1(PIRP Irp);
     NTSTATUS write_raid45(PIRP Irp, bool* no_complete);
     NTSTATUS write_raid6(PIRP Irp, bool* no_complete);
     NTSTATUS write_raid10(PIRP Irp);
@@ -353,6 +352,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete);
 
 // raid1.cpp
 NTSTATUS read_raid1(set_pdo* pdo, PIRP Irp, bool* no_complete);
+NTSTATUS write_raid1(set_pdo* pdo, PIRP Irp);
 
 class io_context {
 public:

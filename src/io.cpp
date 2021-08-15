@@ -554,7 +554,7 @@ NTSTATUS set_device::write(PIRP Irp, bool* no_complete) {
             break;
 
         case RAID_LEVEL_1:
-            Status = pdo->write_raid1(Irp);
+            Status = write_raid1(pdo, Irp);
             break;
 
         case RAID_LEVEL_4:
