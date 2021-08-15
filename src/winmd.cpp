@@ -620,14 +620,14 @@ NTSTATUS set_pdo::close(PIRP) {
     return STATUS_SUCCESS;
 }
 
-void set_pdo::child_removed(set_child* sc) {
+static void child_removed(set_pdo* pdo, set_child* sc) {
     TRACE("(%p)\n", sc);
 
-    if (sc->disk_info.dev_number < array_state.max_dev && roles.dev_roles[sc->disk_info.dev_number] < array_info.raid_disks &&
-        child_list[roles.dev_roles[sc->disk_info.dev_number]] == sc) {
-        child_list[roles.dev_roles[sc->disk_info.dev_number]] = nullptr;
-        found_devices--;
-        loaded = false;
+    if (sc->disk_info.dev_number < pdo->array_state.max_dev && pdo->roles.dev_roles[sc->disk_info.dev_number] < pdo->array_info.raid_disks &&
+        pdo->child_list[pdo->roles.dev_roles[sc->disk_info.dev_number]] == sc) {
+        pdo->child_list[pdo->roles.dev_roles[sc->disk_info.dev_number]] = nullptr;
+        pdo->found_devices--;
+        pdo->loaded = false;
     }
 
     RemoveEntryList(&sc->list_entry);
@@ -637,26 +637,26 @@ void set_pdo::child_removed(set_child* sc) {
 
     // FIXME - send PNP messages(?)
 
-    if (found_devices == 0) {
-        RemoveEntryList(&list_entry);
+    if (pdo->found_devices == 0) {
+        RemoveEntryList(&pdo->list_entry);
 
-        readonly = true;
+        pdo->readonly = true;
 
-        if (flush_thread_handle) {
+        if (pdo->flush_thread_handle) {
             LARGE_INTEGER due_time;
 
-            KeCancelTimer(&flush_thread_timer);
+            KeCancelTimer(&pdo->flush_thread_timer);
 
             due_time.QuadPart = 0;
-            KeSetTimer(&flush_thread_timer, due_time, nullptr);
+            KeSetTimer(&pdo->flush_thread_timer, due_time, nullptr);
 
-            KeWaitForSingleObject(&flush_thread_finished, Executive, KernelMode, false, nullptr);
+            KeWaitForSingleObject(&pdo->flush_thread_finished, Executive, KernelMode, false, nullptr);
 
-            NtClose(flush_thread_handle);
-            flush_thread_handle = nullptr;
+            NtClose(pdo->flush_thread_handle);
+            pdo->flush_thread_handle = nullptr;
         }
 
-        NTSTATUS Status = IoSetDeviceInterfaceState(&bus_name, false);
+        NTSTATUS Status = IoSetDeviceInterfaceState(&pdo->bus_name, false);
         if (!NT_SUCCESS(Status))
             WARN("IoSetDeviceInterfaceState returned %08x\n", Status);
 
@@ -664,7 +664,7 @@ void set_pdo::child_removed(set_child* sc) {
         IoInvalidateDeviceRelations(cde->buspdo, BusRelations);
     }
 
-    ExReleaseResourceLite(&lock);
+    ExReleaseResourceLite(&pdo->lock);
 }
 
 void volume_removal(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
@@ -686,7 +686,7 @@ void volume_removal(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
             auto sc = CONTAINING_RECORD(le2, set_child, list_entry);
 
             if (sc->devpath.Length == devpath->Length && RtlCompareMemory(sc->devpath.Buffer, devpath->Buffer, devpath->Length) == devpath->Length) {
-                sd->child_removed(sc);
+                child_removed(sd, sc);
                 found = true;
                 break;
             }
