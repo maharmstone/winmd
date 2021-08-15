@@ -18,6 +18,7 @@
 #include "winmd.h"
 
 NTSTATUS set_pdo::read_raid6(PIRP Irp, bool* no_complete) {
+    NTSTATUS Status;
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
     bool mdl_locked = true;
     uint64_t offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
@@ -26,27 +27,37 @@ NTSTATUS set_pdo::read_raid6(PIRP Irp, bool* no_complete) {
     PMDL dummy_mdl = nullptr;
     uint8_t* tmpbuf = nullptr;
     PMDL tmpmdl = nullptr;
+    bool asymmetric;
+    uint64_t startoff, endoff;
+    uint32_t startoffstripe, endoffstripe, stripe_length;
+    uint64_t start_chunk, end_chunk;
+    uint32_t skip_first;
+    bool need_dummy;
+    uint32_t pos;
+    io_context* ctxs;
 
-    shared_eresource l(&lock);
+    ExAcquireResourceSharedLite(&lock, true);
 
     if (array_info.layout != RAID_LAYOUT_LEFT_SYMMETRIC && array_info.layout != RAID_LAYOUT_RIGHT_SYMMETRIC &&
-        array_info.layout != RAID_LAYOUT_LEFT_ASYMMETRIC && array_info.layout != RAID_LAYOUT_RIGHT_ASYMMETRIC)
-        return STATUS_INVALID_DEVICE_REQUEST;
+        array_info.layout != RAID_LAYOUT_LEFT_ASYMMETRIC && array_info.layout != RAID_LAYOUT_RIGHT_ASYMMETRIC) {
+        Status = STATUS_INVALID_DEVICE_REQUEST;
+        goto end2;
+    }
 
-    bool asymmetric = array_info.layout == RAID_LAYOUT_LEFT_ASYMMETRIC || array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC;
+    asymmetric = array_info.layout == RAID_LAYOUT_LEFT_ASYMMETRIC || array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC;
 
-    if (array_info.chunksize == 0 || (array_info.chunksize * 512) % PAGE_SIZE != 0)
-        return STATUS_INTERNAL_ERROR;
+    if (array_info.chunksize == 0 || (array_info.chunksize * 512) % PAGE_SIZE != 0) {
+        Status = STATUS_INTERNAL_ERROR;
+        goto end2;
+    }
 
-    uint64_t startoff, endoff;
-    uint32_t startoffstripe, endoffstripe;
-    uint32_t stripe_length = array_info.chunksize * 512;
+    stripe_length = array_info.chunksize * 512;
 
     get_raid0_offset(offset, stripe_length, array_info.raid_disks - 2, &startoff, &startoffstripe);
     get_raid0_offset(offset + length - 1, stripe_length, array_info.raid_disks - 2, &endoff, &endoffstripe);
 
-    uint64_t start_chunk = offset / stripe_length;
-    uint64_t end_chunk = (offset + length - 1) / stripe_length;
+    start_chunk = offset / stripe_length;
+    end_chunk = (offset + length - 1) / stripe_length;
 
     if (start_chunk == end_chunk) { // small reads, on one device
         auto parity = get_parity_volume(offset);
@@ -68,26 +79,28 @@ NTSTATUS set_pdo::read_raid6(PIRP Irp, bool* no_complete) {
 
         *no_complete = true;
 
-        return IoCallDriver(c->device, Irp);
+        Status = IoCallDriver(c->device, Irp);
+        goto end2;
     }
 
-    uint32_t skip_first = offset % PAGE_SIZE;
+    skip_first = offset % PAGE_SIZE;
 
     startoff -= skip_first;
     offset -= skip_first;
     length += skip_first;
 
-    auto ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * array_info.raid_disks, ALLOC_TAG);
+    ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto end2;
     }
 
     RtlZeroMemory(ctxs, sizeof(io_context) * array_info.raid_disks);
 
-    bool need_dummy = false;
+    need_dummy = false;
 
-    uint32_t pos = 0;
+    pos = 0;
     while (pos < length) {
         auto parity = get_parity_volume(offset + pos);
 
@@ -177,8 +190,6 @@ NTSTATUS set_pdo::read_raid6(PIRP Irp, bool* no_complete) {
             break;
         }
     }
-
-    NTSTATUS Status;
 
     for (unsigned int i = 0; i < array_info.raid_disks; i++) {
         if (ctxs[i].stripe_end != ctxs[i].stripe_start) {
@@ -452,6 +463,9 @@ end:
 
     if (tmpbuf)
         ExFreePool(tmpbuf);
+
+end2:
+    ExReleaseResourceLite(&lock);
 
     return Status;
 }
