@@ -889,18 +889,22 @@ static NTSTATUS dev_ioctl(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, 
 }
 
 NTSTATUS set_pdo::check_verify() {
-    shared_eresource l(&lock);
+    ExAcquireResourceSharedLite(&lock, true);
 
     LIST_ENTRY* le = children.Flink;
     while (le != &children) {
         auto c = CONTAINING_RECORD(le, set_child, list_entry);
 
         NTSTATUS Status = dev_ioctl(c->device, c->fileobj, IOCTL_STORAGE_CHECK_VERIFY, nullptr, 0, nullptr, 0, false, nullptr);
-        if (!NT_SUCCESS(Status))
+        if (!NT_SUCCESS(Status)) {
+            ExReleaseResourceLite(&lock);
             return Status;
+        }
 
         le = le->Flink;
     }
+
+    ExReleaseResourceLite(&lock);
 
     return STATUS_SUCCESS;
 }
