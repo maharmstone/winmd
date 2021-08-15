@@ -183,7 +183,7 @@ NTSTATUS set_device::read(PIRP Irp, bool* no_complete) {
             return read_raid6(pdo, Irp, no_complete);
 
         case RAID_LEVEL_10:
-            return pdo->read_raid10(Irp, no_complete);
+            return read_raid10(pdo, Irp, no_complete);
 
         case RAID_LEVEL_LINEAR:
             return read_linear(pdo, Irp, no_complete);
