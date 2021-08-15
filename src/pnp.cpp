@@ -320,11 +320,12 @@ NTSTATUS set_pdo::AddDevice() {
     PDEVICE_OBJECT voldev;
     set_device* sd;
 
-    exclusive_eresource l(&lock);
+    ExAcquireResourceExclusiveLite(&lock, true);
 
     if (dev) {
         ERR("AddDevice called for already-created device\n");
-        return STATUS_INTERNAL_ERROR;
+        Status = STATUS_INTERNAL_ERROR;
+        goto end;
     }
 
     volname.Length = volname.MaximumLength = sizeof(device_prefix) + (36 * sizeof(char16_t));
@@ -332,23 +333,26 @@ NTSTATUS set_pdo::AddDevice() {
     volname.Buffer = (WCHAR*)ExAllocatePoolWithTag(NonPagedPool, volname.Length, ALLOC_TAG);
     if (!volname.Buffer) {
         ERR("out of memory\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto end;
     }
 
     RtlCopyMemory(volname.Buffer, device_prefix, sizeof(device_prefix) - sizeof(char16_t));
 
-    auto p = &volname.Buffer[(sizeof(device_prefix) / sizeof(char16_t)) - 1];
+    {
+        auto p = &volname.Buffer[(sizeof(device_prefix) / sizeof(char16_t)) - 1];
 
-    for (uint8_t i = 0; i < 16; i++) {
-        *p = hex_digit((array_info.set_uuid[i] & 0xf0) >> 4); p++;
-        *p = hex_digit(array_info.set_uuid[i] & 0xf); p++;
+        for (uint8_t i = 0; i < 16; i++) {
+            *p = hex_digit((array_info.set_uuid[i] & 0xf0) >> 4); p++;
+            *p = hex_digit(array_info.set_uuid[i] & 0xf); p++;
 
-        if (i == 3 || i == 5 || i == 7 || i == 9) {
-            *p = u'-'; p++;
+            if (i == 3 || i == 5 || i == 7 || i == 9) {
+                *p = u'-'; p++;
+            }
         }
-    }
 
-    *p = u'}';
+        *p = u'}';
+    }
 
     Status = IoCreateDevice(drvobj, sizeof(set_device), &volname, FILE_DEVICE_DISK,
                             RtlIsNtDdiVersionAvailable(NTDDI_WIN8) ? FILE_DEVICE_ALLOW_APPCONTAINER_TRAVERSAL : 0, false, &voldev);
@@ -357,7 +361,7 @@ NTSTATUS set_pdo::AddDevice() {
 
     if (!NT_SUCCESS(Status)) {
         ERR("IoCreateDevice returned %08x\n", Status);
-        return Status;
+        goto end;
     }
 
     voldev->Flags |= DO_DIRECT_IO;
@@ -383,7 +387,12 @@ NTSTATUS set_pdo::AddDevice() {
     if (!NT_SUCCESS(Status))
         WARN("IoSetDeviceInterfaceState returned %08x\n", Status);
 
-    return STATUS_SUCCESS;
+    Status = STATUS_SUCCESS;
+
+end:
+    ExReleaseResourceLite(&lock);
+
+    return Status;
 }
 
 NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject) {
