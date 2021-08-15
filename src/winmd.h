@@ -300,7 +300,6 @@ public:
     UNICODE_STRING bus_name;
 
 private:
-    NTSTATUS mountdev_query_unique_id(PIRP Irp);
     NTSTATUS check_verify();
     NTSTATUS disk_get_drive_geometry(PIRP Irp, PDEVICE_OBJECT devobj);
     NTSTATUS disk_get_length_info(PIRP Irp);

@@ -830,7 +830,7 @@ static NTSTATUS mountdev_query_device_name(mdraid_array_info* array_info, PIRP I
     return STATUS_SUCCESS;
 }
 
-NTSTATUS set_pdo::mountdev_query_unique_id(PIRP Irp) {
+static NTSTATUS mountdev_query_unique_id(mdraid_array_info* array_info, PIRP Irp) {
     PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
     if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(MOUNTDEV_UNIQUE_ID)) {
@@ -839,14 +839,14 @@ NTSTATUS set_pdo::mountdev_query_unique_id(PIRP Irp) {
     }
 
     auto mduid = (MOUNTDEV_UNIQUE_ID*)Irp->AssociatedIrp.SystemBuffer;
-    mduid->UniqueIdLength = sizeof(array_info.set_uuid);
+    mduid->UniqueIdLength = sizeof(array_info->set_uuid);
 
     if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < offsetof(MOUNTDEV_UNIQUE_ID, UniqueId[0]) + mduid->UniqueIdLength) {
         Irp->IoStatus.Information = sizeof(MOUNTDEV_UNIQUE_ID);
         return STATUS_BUFFER_OVERFLOW;
     }
 
-    RtlCopyMemory(mduid->UniqueId, array_info.set_uuid, sizeof(array_info.set_uuid));
+    RtlCopyMemory(mduid->UniqueId, array_info->set_uuid, sizeof(array_info->set_uuid));
 
     Irp->IoStatus.Information = offsetof(MOUNTDEV_UNIQUE_ID, UniqueId[0]) + mduid->UniqueIdLength;
 
@@ -954,7 +954,7 @@ NTSTATUS set_device::device_control(PIRP Irp) {
             return mountdev_query_device_name(&pdo->array_info, Irp);
 
         case IOCTL_MOUNTDEV_QUERY_UNIQUE_ID:
-            return pdo->mountdev_query_unique_id(Irp);
+            return mountdev_query_unique_id(&pdo->array_info, Irp);
 
         case IOCTL_STORAGE_CHECK_VERIFY:
         case IOCTL_DISK_CHECK_VERIFY:
