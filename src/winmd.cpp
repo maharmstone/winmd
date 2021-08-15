@@ -888,23 +888,23 @@ static NTSTATUS dev_ioctl(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, 
     return Status;
 }
 
-NTSTATUS set_pdo::check_verify() {
-    ExAcquireResourceSharedLite(&lock, true);
+static NTSTATUS check_verify(set_pdo* pdo) {
+    ExAcquireResourceSharedLite(&pdo->lock, true);
 
-    LIST_ENTRY* le = children.Flink;
-    while (le != &children) {
+    LIST_ENTRY* le = pdo->children.Flink;
+    while (le != &pdo->children) {
         auto c = CONTAINING_RECORD(le, set_child, list_entry);
 
         NTSTATUS Status = dev_ioctl(c->device, c->fileobj, IOCTL_STORAGE_CHECK_VERIFY, nullptr, 0, nullptr, 0, false, nullptr);
         if (!NT_SUCCESS(Status)) {
-            ExReleaseResourceLite(&lock);
+            ExReleaseResourceLite(&pdo->lock);
             return Status;
         }
 
         le = le->Flink;
     }
 
-    ExReleaseResourceLite(&lock);
+    ExReleaseResourceLite(&pdo->lock);
 
     return STATUS_SUCCESS;
 }
@@ -958,7 +958,7 @@ NTSTATUS set_device::device_control(PIRP Irp) {
 
         case IOCTL_STORAGE_CHECK_VERIFY:
         case IOCTL_DISK_CHECK_VERIFY:
-            return pdo->check_verify();
+            return check_verify(pdo);
 
         case IOCTL_DISK_GET_DRIVE_GEOMETRY:
             return pdo->disk_get_drive_geometry(Irp, devobj);
