@@ -294,8 +294,6 @@ public:
     bool readonly = false;
     UNICODE_STRING bus_name;
 
-    uint32_t get_physical_stripe(uint32_t stripe, uint32_t parity);
-
 private:
     NTSTATUS read_raid10(PIRP Irp, bool* no_complete);
     NTSTATUS write_raid10(PIRP Irp);
@@ -326,6 +324,7 @@ void do_xor(uint8_t* buf1, uint8_t* buf2, uint32_t len);
 NTSTATUS add_partial_chunk(set_pdo* pdo, uint64_t offset, uint32_t length, void* data);
 void flush_chunks(set_pdo* pdo);
 uint32_t get_parity_volume(set_pdo* pdo, uint64_t offset);
+uint32_t get_physical_stripe(set_pdo* pdo, uint32_t stripe, uint32_t parity);
 
 // pnp.cpp
 NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp);

@@ -120,19 +120,19 @@ uint32_t get_parity_volume(set_pdo* pdo, uint64_t offset) {
     }
 }
 
-uint32_t set_pdo::get_physical_stripe(uint32_t stripe, uint32_t parity) {
-    if (array_info.level == RAID_LEVEL_6) {
-        uint32_t q = (parity + 1) % array_info.raid_disks;
+uint32_t get_physical_stripe(set_pdo* pdo, uint32_t stripe, uint32_t parity) {
+    if (pdo->array_info.level == RAID_LEVEL_6) {
+        uint32_t q = (parity + 1) % pdo->array_info.raid_disks;
 
-        if (array_info.layout == RAID_LAYOUT_LEFT_ASYMMETRIC || array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC)
+        if (pdo->array_info.layout == RAID_LAYOUT_LEFT_ASYMMETRIC || pdo->array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC)
             return stripe + (q == 0 ? 1 : (stripe >= parity ? 2 : 0));
         else
-            return (parity + stripe + 2) % array_info.raid_disks;
+            return (parity + stripe + 2) % pdo->array_info.raid_disks;
     } else {
-        if (array_info.level == RAID_LEVEL_5 && (array_info.layout == RAID_LAYOUT_LEFT_ASYMMETRIC || array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC))
+        if (pdo->array_info.level == RAID_LEVEL_5 && (pdo->array_info.layout == RAID_LAYOUT_LEFT_ASYMMETRIC || pdo->array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC))
             return stripe + (stripe >= parity ? 1 : 0);
         else
-            return (parity + stripe + 1) % array_info.raid_disks;
+            return (parity + stripe + 1) % pdo->array_info.raid_disks;
     }
 }
 
@@ -255,7 +255,7 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
 
     {
         auto parity = get_parity_volume(pdo, pc->offset);
-        uint32_t stripe = pdo->get_physical_stripe(0, parity);
+        uint32_t stripe = get_physical_stripe(pdo, 0, parity);
 
         for (uint32_t i = 0; i < data_disks; i++) {
             ULONG index;

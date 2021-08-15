@@ -65,7 +65,7 @@ NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     if (start_chunk == end_chunk) { // small reads, on one device
         auto parity = get_parity_volume(pdo, offset);
-        uint32_t disk_num = pdo->get_physical_stripe(startoffstripe, parity);
+        uint32_t disk_num = get_physical_stripe(pdo, startoffstripe, parity);
 
         auto c = pdo->child_list[disk_num];
 
@@ -109,7 +109,7 @@ NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
         auto parity = get_parity_volume(pdo, offset + pos);
 
         if (pos == 0) {
-            uint32_t stripe = pdo->get_physical_stripe(startoffstripe, parity);
+            uint32_t stripe = get_physical_stripe(pdo, startoffstripe, parity);
 
             for (uint32_t i = startoffstripe; i < pdo->array_info.raid_disks - 2; i++) {
                 if (i == startoffstripe) {
@@ -147,7 +147,7 @@ NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                 break;
 
             for (uint32_t i = 0; i < startoffstripe; i++) {
-                uint32_t stripe2 = pdo->get_physical_stripe(i, parity);
+                uint32_t stripe2 = get_physical_stripe(pdo, i, parity);
 
                 ctxs[stripe2].stripe_start = ctxs[stripe2].stripe_end = startoff - (startoff % stripe_length) + stripe_length;
             }
@@ -173,7 +173,7 @@ NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             pos += (uint32_t)(stripe_length * (pdo->array_info.raid_disks - 2));
             need_dummy = true;
         } else {
-            uint32_t stripe = pdo->get_physical_stripe(0, parity);
+            uint32_t stripe = get_physical_stripe(pdo, 0, parity);
 
             for (uint32_t i = 0; i < pdo->array_info.raid_disks - 2; i++) {
                 if (endoffstripe == i) {
@@ -306,7 +306,7 @@ NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             auto parity = get_parity_volume(pdo, offset + pos);
 
             if (pos == 0) {
-                uint32_t stripe = pdo->get_physical_stripe(startoffstripe, parity);
+                uint32_t stripe = get_physical_stripe(pdo, startoffstripe, parity);
 
                 for (uint32_t i = startoffstripe; i < pdo->array_info.raid_disks - 2; i++) {
                     uint32_t len, pages;
@@ -349,7 +349,7 @@ NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                         stripe = (stripe + 1) % pdo->array_info.raid_disks;
                 }
             } else if (length - pos >= stripe_length * (pdo->array_info.raid_disks - 2)) {
-                uint32_t stripe = pdo->get_physical_stripe(0, parity);
+                uint32_t stripe = get_physical_stripe(pdo, 0, parity);
                 uint32_t pages = stripe_length / PAGE_SIZE;
 
                 for (uint32_t i = 0; i < pdo->array_info.raid_disks - 2; i++) {
@@ -376,7 +376,7 @@ NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                     ctxs[(parity + 1) % pdo->array_info.raid_disks].pfnp = &ctxs[(parity + 1) % pdo->array_info.raid_disks].pfnp[1];
                 }
             } else {
-                uint32_t stripe = pdo->get_physical_stripe(0, parity);
+                uint32_t stripe = get_physical_stripe(pdo, 0, parity);
 
                 for (uint32_t i = 0; i < pdo->array_info.raid_disks - 2; i++) {
                     uint32_t readlen, pages;
@@ -604,7 +604,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     if (start_chunk == end_chunk) { // small write, on one device
         auto parity = get_parity_volume(pdo, offset);
-        uint32_t disk_num = pdo->get_physical_stripe(startoffstripe, parity);
+        uint32_t disk_num = get_physical_stripe(pdo, startoffstripe, parity);
 
         auto c = pdo->child_list[disk_num];
 
@@ -627,7 +627,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     if (skip_first != 0) {
         auto parity = get_parity_volume(pdo, offset);
-        uint32_t disk_num = pdo->get_physical_stripe(startoffstripe, parity);
+        uint32_t disk_num = get_physical_stripe(pdo, startoffstripe, parity);
         first_bit.sc = pdo->child_list[disk_num];
         first_bit.Irp = IoAllocateIrp(first_bit.sc->device->StackSize, false);
 
@@ -689,7 +689,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
         auto parity = get_parity_volume(pdo, offset + pos);
 
         if (pos == 0) {
-            uint32_t stripe = pdo->get_physical_stripe(startoffstripe, parity);
+            uint32_t stripe = get_physical_stripe(pdo, startoffstripe, parity);
 
             ctxs[stripe].first = true;
 
@@ -723,7 +723,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             }
 
             for (uint32_t i = 0; i < startoffstripe; i++) {
-                uint32_t stripe2 = pdo->get_physical_stripe(i, parity);
+                uint32_t stripe2 = get_physical_stripe(pdo, i, parity);
 
                 ctxs[stripe2].stripe_start = ctxs[stripe2].stripe_end = startoff - (startoff % stripe_length) + stripe_length;
             }
@@ -759,7 +759,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
             pos += (uint32_t)(stripe_length * (pdo->array_info.raid_disks - 2));
         } else {
-            uint32_t stripe = pdo->get_physical_stripe(0, parity);
+            uint32_t stripe = get_physical_stripe(pdo, 0, parity);
 
             for (uint32_t i = 0; i < pdo->array_info.raid_disks - 2; i++) {
                 if (endoffstripe == i) {
@@ -904,7 +904,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             auto parity = get_parity_volume(pdo, offset + pos);
 
             if (pos == 0 && offset != parity_offset) {
-                uint32_t stripe = pdo->get_physical_stripe(startoffstripe, parity);
+                uint32_t stripe = get_physical_stripe(pdo, startoffstripe, parity);
 
                 for (uint32_t i = startoffstripe; i < pdo->array_info.raid_disks - 2; i++) {
                     uint32_t writelen, pages;
@@ -957,7 +957,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                     do_xor(pq, addr + (stripe * stripe_length), stripe_length);
                 }
 
-                stripe = pdo->get_physical_stripe(0, parity);
+                stripe = get_physical_stripe(pdo, 0, parity);
 
                 for (uint32_t i = 0; i < pdo->array_info.raid_disks - 2; i++) {
                     if (i == 0)
@@ -993,7 +993,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                 q_pfns = &q_pfns[pages];
                 ctxs[(parity + 1) % pdo->array_info.raid_disks].pfnp = &ctxs[(parity + 1) % pdo->array_info.raid_disks].pfnp[pages];
             } else {
-                uint32_t stripe = pdo->get_physical_stripe(0, parity);
+                uint32_t stripe = get_physical_stripe(pdo, 0, parity);
 
                 for (uint32_t i = 0; i < pdo->array_info.raid_disks - 2; i++) {
                     uint32_t writelen = min(length - pos, (uint32_t)stripe_length);
