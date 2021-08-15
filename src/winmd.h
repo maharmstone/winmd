@@ -299,7 +299,6 @@ public:
     uint32_t get_physical_stripe(uint32_t stripe, uint32_t parity);
 
 private:
-    NTSTATUS read_raid6(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid10(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid10_odd(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid10_offset(PIRP Irp, bool* no_complete);
@@ -353,6 +352,9 @@ NTSTATUS write_raid1(set_pdo* pdo, PIRP Irp);
 NTSTATUS read_raid45(set_pdo* pdo, PIRP Irp, bool* no_complete);
 NTSTATUS write_raid45(set_pdo* pdo, PIRP Irp, bool* no_complete);
 NTSTATUS flush_partial_chunk_raid45(set_pdo* pdo, partial_chunk* pc, RTL_BITMAP* valid_bmp);
+
+// raid6.cpp
+NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete);
 
 // linear.cpp
 NTSTATUS read_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
