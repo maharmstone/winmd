@@ -161,7 +161,7 @@ static NTSTATUS query_capabilities(PIRP Irp) {
     return STATUS_SUCCESS;
 }
 
-NTSTATUS control_device::query_hardware_ids(PIRP Irp) {
+static NTSTATUS query_hardware_ids(PIRP Irp) {
     static const char16_t ids[] = u"ROOT\\winmd\0";
 
     auto out = (char16_t*)ExAllocatePoolWithTag(PagedPool, sizeof(ids), ALLOC_TAG);
