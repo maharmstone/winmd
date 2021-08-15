@@ -429,12 +429,15 @@ void __stdcall flush_thread(void* context) {
 }
 
 NTSTATUS set_pdo::add_partial_chunk(uint64_t offset, uint32_t length, void* data) {
+    NTSTATUS Status;
     uint32_t data_disks = array_info.raid_disks - (array_info.level == RAID_LEVEL_6 ? 2 : 1);
     uint32_t full_chunk = array_info.chunksize * 512 * data_disks;
+    partial_chunk* pc;
+    uint32_t pclen;
 
     uint64_t chunk_offset = offset - (offset % full_chunk);
 
-    exclusive_eresource l(&partial_chunks_lock);
+    ExAcquireResourceExclusiveLite(&partial_chunks_lock, true);
 
     LIST_ENTRY* le = partial_chunks.Flink;
 
@@ -450,29 +453,30 @@ NTSTATUS set_pdo::add_partial_chunk(uint64_t offset, uint32_t length, void* data
                 NTSTATUS Status = flush_partial_chunk(pc);
                 if (!NT_SUCCESS(Status)) {
                     ERR("flush_partial_chunk returned %08x\n", Status);
-                    return Status;
+                    goto end;
                 }
 
                 RemoveEntryList(&pc->list_entry);
                 ExFreePool(pc);
             }
 
-            return STATUS_SUCCESS;
+            Status = STATUS_SUCCESS;
+            goto end;
         } else if (pc->offset > chunk_offset)
             break;
 
         le = le->Flink;
     }
 
-    uint32_t pclen = offsetof(partial_chunk, data[0]);
-
+    pclen = offsetof(partial_chunk, data[0]);
     pclen += full_chunk; // data length
     pclen += sector_align(array_info.chunksize * data_disks, 32) / 8; // bitmap length
 
-    auto pc = (partial_chunk*)ExAllocatePoolWithTag(NonPagedPool/*FIXME - ?*/, pclen, ALLOC_TAG);
+    pc = (partial_chunk*)ExAllocatePoolWithTag(NonPagedPool/*FIXME - ?*/, pclen, ALLOC_TAG);
     if (!pc) {
         ERR("out of memory\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto end;
     }
 
     pc->offset = chunk_offset;
@@ -486,7 +490,12 @@ NTSTATUS set_pdo::add_partial_chunk(uint64_t offset, uint32_t length, void* data
 
     InsertHeadList(le->Blink, &pc->list_entry);
 
-    return STATUS_SUCCESS;
+    Status = STATUS_SUCCESS;
+
+end:
+    ExReleaseResourceLite(&partial_chunks_lock);
+
+    return Status;
 }
 
 NTSTATUS set_device::write(PIRP Irp, bool* no_complete) {
