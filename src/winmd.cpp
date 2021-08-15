@@ -677,7 +677,7 @@ void set_pdo::child_removed(set_child* sc) {
 void volume_removal(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
     TRACE("(%p, %.*S)\n", DriverObject, devpath->Length / sizeof(WCHAR), devpath->Buffer);
 
-    exclusive_eresource lock(&dev_lock);
+    ExAcquireResourceExclusiveLite(&dev_lock, true);
 
     LIST_ENTRY* le = dev_list.Flink;
 
@@ -708,6 +708,8 @@ void volume_removal(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
 
         le = le->Flink;
     }
+
+    ExReleaseResourceLite(&dev_lock);
 }
 
 static NTSTATUS __stdcall volume_notification(PVOID NotificationStructure, PVOID Context) {
