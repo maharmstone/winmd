@@ -295,7 +295,6 @@ public:
     UNICODE_STRING bus_name;
 
 private:
-    NTSTATUS read_raid0(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid1(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid45(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid6(PIRP Irp, bool* no_complete);
@@ -349,6 +348,9 @@ void do_xor(uint8_t* buf1, uint8_t* buf2, uint32_t len);
 // pnp.cpp
 NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject);
+
+// raid0.cpp
+NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete);
 
 class io_context {
 public:

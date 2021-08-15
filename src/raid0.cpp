@@ -17,7 +17,7 @@
 
 #include "winmd.h"
 
-NTSTATUS set_pdo::read_raid0(PIRP Irp, bool* no_complete) {
+NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
     uint64_t offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Read.Length;
@@ -25,22 +25,22 @@ NTSTATUS set_pdo::read_raid0(PIRP Irp, bool* no_complete) {
     uint8_t* tmpbuf = nullptr;
     PMDL tmpmdl = nullptr;
 
-    if (array_info.chunksize == 0 || (array_info.chunksize * 512) % PAGE_SIZE != 0)
+    if (pdo->array_info.chunksize == 0 || (pdo->array_info.chunksize * 512) % PAGE_SIZE != 0)
         return STATUS_INTERNAL_ERROR;
 
-    uint64_t start_chunk = offset / (array_info.chunksize * 512);
-    uint64_t end_chunk = (offset + length - 1) / (array_info.chunksize * 512);
+    uint64_t start_chunk = offset / (pdo->array_info.chunksize * 512);
+    uint64_t end_chunk = (offset + length - 1) / (pdo->array_info.chunksize * 512);
 
     if (start_chunk == end_chunk) { // small reads, on one device
-        auto c = child_list[start_chunk % array_info.raid_disks];
+        auto c = pdo->child_list[start_chunk % pdo->array_info.raid_disks];
 
         IoCopyCurrentIrpStackLocationToNext(Irp);
 
         auto IrpSp2 = IoGetNextIrpStackLocation(Irp);
 
-        uint64_t start = (start_chunk / array_info.raid_disks) * (array_info.chunksize * 512);
+        uint64_t start = (start_chunk / pdo->array_info.raid_disks) * (pdo->array_info.chunksize * 512);
 
-        start += offset % (array_info.chunksize * 512);
+        start += offset % (pdo->array_info.chunksize * 512);
         start += c->disk_info.data_offset * 512;
 
         IrpSp2->FileObject = c->fileobj;
@@ -54,25 +54,25 @@ NTSTATUS set_pdo::read_raid0(PIRP Irp, bool* no_complete) {
     uint64_t startoff, endoff;
     uint32_t startoffstripe, endoffstripe;
 
-    uint32_t stripe_length = array_info.chunksize * 512;
+    uint32_t stripe_length = pdo->array_info.chunksize * 512;
 
     uint32_t skip_first = offset % PAGE_SIZE;
 
     offset -= skip_first;
     length += skip_first;
 
-    get_raid0_offset(offset, stripe_length, array_info.raid_disks, &startoff, &startoffstripe);
-    get_raid0_offset(offset + length - 1, stripe_length, array_info.raid_disks, &endoff, &endoffstripe);
+    get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks, &startoff, &startoffstripe);
+    get_raid0_offset(offset + length - 1, stripe_length, pdo->array_info.raid_disks, &endoff, &endoffstripe);
 
-    auto ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * array_info.raid_disks, ALLOC_TAG);
+    auto ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlZeroMemory(ctxs, sizeof(io_context) * array_info.raid_disks);
+    RtlZeroMemory(ctxs, sizeof(io_context) * pdo->array_info.raid_disks);
 
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (startoffstripe > i)
             ctxs[i].stripe_start = startoff - (startoff % stripe_length) + stripe_length;
         else if (startoffstripe == i)
@@ -90,9 +90,9 @@ NTSTATUS set_pdo::read_raid0(PIRP Irp, bool* no_complete) {
 
     NTSTATUS Status;
 
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].stripe_end != ctxs[i].stripe_start) {
-            ctxs[i].Irp = IoAllocateIrp(child_list[i]->device->StackSize, false);
+            ctxs[i].Irp = IoAllocateIrp(pdo->child_list[i]->device->StackSize, false);
 
             if (!ctxs[i].Irp) {
                 ERR("IoAllocateIrp failed\n");
@@ -114,9 +114,9 @@ NTSTATUS set_pdo::read_raid0(PIRP Irp, bool* no_complete) {
 
             ctxs[i].Irp->MdlAddress = ctxs[i].mdl;
 
-            IrpSp2->FileObject = child_list[i]->fileobj;
+            IrpSp2->FileObject = pdo->child_list[i]->fileobj;
             IrpSp2->Parameters.Read.Length = (ULONG)(ctxs[i].stripe_end - ctxs[i].stripe_start);
-            IrpSp2->Parameters.Read.ByteOffset.QuadPart = ctxs[i].stripe_start + (child_list[i]->disk_info.data_offset * 512);
+            IrpSp2->Parameters.Read.ByteOffset.QuadPart = ctxs[i].stripe_start + (pdo->child_list[i]->disk_info.data_offset * 512);
 
             ctxs[i].Irp->UserIosb = &ctxs[i].iosb;
 
@@ -169,7 +169,7 @@ NTSTATUS set_pdo::read_raid0(PIRP Irp, bool* no_complete) {
         uint32_t stripe = startoffstripe;
         MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 
-        for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+        for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
             if (ctxs[i].mdl)
                 ctxs[i].pfnp = ctxs[i].pfns = MmGetMdlPfnArray(ctxs[i].mdl);
         }
@@ -208,13 +208,13 @@ NTSTATUS set_pdo::read_raid0(PIRP Irp, bool* no_complete) {
 
             pos += len;
 
-            stripe = (stripe + 1) % array_info.raid_disks;
+            stripe = (stripe + 1) % pdo->array_info.raid_disks;
         }
     }
 
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].Irp) {
-            ctxs[i].Status = IoCallDriver(child_list[i]->device, ctxs[i].Irp);
+            ctxs[i].Status = IoCallDriver(pdo->child_list[i]->device, ctxs[i].Irp);
             if (!NT_SUCCESS(ctxs[i].Status))
                 ERR("IoCallDriver returned %08x\n", ctxs[i].Status);
         }
@@ -222,7 +222,7 @@ NTSTATUS set_pdo::read_raid0(PIRP Irp, bool* no_complete) {
 
     Status = STATUS_SUCCESS;
 
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].Status == STATUS_PENDING) {
             KeWaitForSingleObject(&ctxs[i].Event, Executive, KernelMode, false, nullptr);
             ctxs[i].Status = ctxs[i].iosb.Status;
@@ -242,7 +242,7 @@ end:
     if (!mdl_locked)
         MmUnlockPages(Irp->MdlAddress);
 
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].mdl)
             IoFreeMdl(ctxs[i].mdl);
 
