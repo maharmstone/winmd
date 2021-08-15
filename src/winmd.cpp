@@ -739,29 +739,29 @@ static void __stdcall DriverUnload(PDRIVER_OBJECT DriverObject) {
     if (master_devobj)
         IoDeleteDevice(master_devobj);
 
-    {
-        exclusive_eresource lock(&dev_lock);
+    ExAcquireResourceExclusiveLite(&dev_lock, true);
 
-        while (!IsListEmpty(&dev_list)) {
-            auto sd = CONTAINING_RECORD(RemoveHeadList(&dev_list), set_pdo, list_entry);
+    while (!IsListEmpty(&dev_list)) {
+        auto sd = CONTAINING_RECORD(RemoveHeadList(&dev_list), set_pdo, list_entry);
 
-            sd->readonly = true;
+        sd->readonly = true;
 
-            if (sd->flush_thread_handle) {
-                LARGE_INTEGER due_time;
+        if (sd->flush_thread_handle) {
+            LARGE_INTEGER due_time;
 
-                KeCancelTimer(&sd->flush_thread_timer);
+            KeCancelTimer(&sd->flush_thread_timer);
 
-                due_time.QuadPart = 0;
-                KeSetTimer(&sd->flush_thread_timer, due_time, nullptr);
+            due_time.QuadPart = 0;
+            KeSetTimer(&sd->flush_thread_timer, due_time, nullptr);
 
-                KeWaitForSingleObject(&sd->flush_thread_finished, Executive, KernelMode, false, nullptr);
+            KeWaitForSingleObject(&sd->flush_thread_finished, Executive, KernelMode, false, nullptr);
 
-                NtClose(sd->flush_thread_handle);
-                sd->flush_thread_handle = nullptr;
-            }
+            NtClose(sd->flush_thread_handle);
+            sd->flush_thread_handle = nullptr;
         }
     }
+
+    ExReleaseResourceLite(&dev_lock);
 
     auto cde = (control_device*)master_devobj->DeviceExtension;
     IoInvalidateDeviceRelations(cde->buspdo, BusRelations);
