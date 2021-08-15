@@ -1494,7 +1494,7 @@ end:
 NTSTATUS set_pdo::write_raid10(PIRP Irp) {
     NTSTATUS Status;
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    bool mdl_locked = true;
+    bool mdl_locked;
     uint8_t* tmpbuf = nullptr;
     PMDL tmpmdl = nullptr;
 
@@ -1519,14 +1519,12 @@ NTSTATUS set_pdo::write_raid10(PIRP Irp) {
     uint32_t length = IrpSp->Parameters.Write.Length;
     uint32_t skip_first = offset % PAGE_SIZE ? (PAGE_SIZE - (offset % PAGE_SIZE)) : 0;
 
-    np_buffer ctxs_buf(sizeof(io_context) * array_info.raid_disks * far);
-
-    if (!ctxs_buf.buf) {
+    auto ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * array_info.raid_disks * far,
+                                                   ALLOC_TAG);
+    if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
-
-    auto ctxs = (io_context*)ctxs_buf.buf;
 
     RtlZeroMemory(ctxs, sizeof(io_context) * array_info.raid_disks * far);
 
@@ -1814,6 +1812,8 @@ end:
 
     if (tmpbuf)
         ExFreePool(tmpbuf);
+
+    ExFreePool(ctxs);
 
     return Status;
 }
