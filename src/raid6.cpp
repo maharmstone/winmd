@@ -1319,28 +1319,28 @@ void set_pdo::paranoid_raid6_check(uint64_t parity_offset, uint32_t parity_lengt
 
     uint32_t stripe_length = array_info.chunksize * 512;
 
-    np_buffer p(stripe_length);
-
-    if (!p.buf) {
+    auto p = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
+    if (!p) {
         ERR("out of memory\n");
         return;
     }
 
-    np_buffer q(stripe_length);
-
-    if (!q.buf) {
+    auto q = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
+    if (!q) {
         ERR("out of memory\n");
+        ExFreePool(p);
         return;
     }
 
-    np_buffer ctxpbuf(sizeof(io_context*) * array_info.raid_disks);
+    auto ctxp = (io_context**)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context*) * array_info.raid_disks,
+                                                    ALLOC_TAG);
 
-    if (!ctxpbuf.buf) {
+    if (!ctxp) {
         ERR("out of memory\n");
+        ExFreePool(q);
+        ExFreePool(p);
         return;
     }
-
-    auto ctxp = (io_context**)ctxpbuf.buf;
 
     {
         uint32_t i = 0;
@@ -1367,37 +1367,42 @@ void set_pdo::paranoid_raid6_check(uint64_t parity_offset, uint32_t parity_lengt
 
         for (uint32_t j = 0; j < data_disks; j++) {
             if (j == 0) {
-                RtlCopyMemory(p.buf, (uint8_t*)ctxp[disk_num]->va + (i * stripe_length), stripe_length);
-                RtlCopyMemory(q.buf, (uint8_t*)ctxp[disk_num]->va + (i * stripe_length), stripe_length);
+                RtlCopyMemory(p, (uint8_t*)ctxp[disk_num]->va + (i * stripe_length), stripe_length);
+                RtlCopyMemory(q, (uint8_t*)ctxp[disk_num]->va + (i * stripe_length), stripe_length);
             } else {
-                do_xor(p.buf, (uint8_t*)ctxp[disk_num]->va + (i * stripe_length), stripe_length);
+                do_xor(p, (uint8_t*)ctxp[disk_num]->va + (i * stripe_length), stripe_length);
 
-                galois_double(q.buf, stripe_length);
-                do_xor(q.buf, (uint8_t*)ctxp[disk_num]->va + (i * stripe_length), stripe_length);
+                galois_double(q, stripe_length);
+                do_xor(q, (uint8_t*)ctxp[disk_num]->va + (i * stripe_length), stripe_length);
             }
 
             disk_num = (disk_num + array_info.raid_disks - 1) % array_info.raid_disks;
         }
 
-        do_xor(p.buf, (uint8_t*)ctxp[parity]->va + (i * stripe_length), stripe_length);
+        do_xor(p, (uint8_t*)ctxp[parity]->va + (i * stripe_length), stripe_length);
 
         for (unsigned int i = 0; i < stripe_length; i++) {
-            if (p.buf[i] != 0) {
+            if (p[i] != 0) {
                 ERR("parity error\n");
                 __debugbreak();
-                return;
+                goto end;
             }
         }
 
-        do_xor(q.buf, (uint8_t*)ctxp[q_num]->va + (i * stripe_length), stripe_length);
+        do_xor(q, (uint8_t*)ctxp[q_num]->va + (i * stripe_length), stripe_length);
 
         for (unsigned int i = 0; i < stripe_length; i++) {
-            if (q.buf[i] != 0) {
+            if (q[i] != 0) {
                 ERR("q error\n");
                 __debugbreak();
-                return;
+                goto end;
             }
         }
     }
+
+end:
+    ExFreePool(ctxp);
+    ExFreePool(q);
+    ExFreePool(p);
 }
 #endif
