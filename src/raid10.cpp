@@ -1367,14 +1367,14 @@ static NTSTATUS write_raid10_offset_partial(set_pdo* pdo, LIST_ENTRY* ctxs, uint
     return STATUS_SUCCESS;
 }
 
-NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
+static NTSTATUS write_raid10_offset(set_pdo* pdo, PIRP Irp) {
     NTSTATUS Status;
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
     bool mdl_locked;
     uint64_t offset = IrpSp->Parameters.Write.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Write.Length;
-    uint32_t stripe_length = array_info.chunksize * 512;
-    uint32_t full_stripe = array_info.raid_disks * stripe_length;
+    uint32_t stripe_length = pdo->array_info.chunksize * 512;
+    uint32_t full_stripe = pdo->array_info.raid_disks * stripe_length;
     LIST_ENTRY ctxs;
 
     mdl_locked = Irp->MdlAddress->MdlFlags & (MDL_PAGES_LOCKED | MDL_PARTIAL);
@@ -1402,7 +1402,7 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
     if (offset % full_stripe != 0) {
         uint32_t partial_len = min(length, full_stripe - (offset % full_stripe));
 
-        Status = write_raid10_offset_partial(this, &ctxs, offset, partial_len, src_pfns, mdl_offset);
+        Status = write_raid10_offset_partial(pdo, &ctxs, offset, partial_len, src_pfns, mdl_offset);
         if (!NT_SUCCESS(Status)) {
             ERR("write_raid10_offset_partial returned %08x\n", Status);
             goto end;
@@ -1428,7 +1428,8 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
     if (length % full_stripe != 0) {
         uint32_t partial_len = length % full_stripe;
 
-        Status = write_raid10_offset_partial(this, &ctxs, offset + length - partial_len, partial_len, &src_pfns[(length - partial_len) / PAGE_SIZE], mdl_offset);
+        Status = write_raid10_offset_partial(pdo, &ctxs, offset + length - partial_len, partial_len,
+                                             &src_pfns[(length - partial_len) / PAGE_SIZE], mdl_offset);
         if (!NT_SUCCESS(Status)) {
             ERR("write_raid10_offset_partial returned %08x\n", Status);
             goto end;
@@ -1438,19 +1439,19 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
     }
 
     if (length > 0) {
-        uint8_t far = (array_info.layout >> 8) & 0xff;
+        uint8_t far = (pdo->array_info.layout >> 8) & 0xff;
         uint64_t stripe_start = (offset / full_stripe) * (stripe_length * far);
         uint32_t len = (length / full_stripe) * (stripe_length * far);
 
-        auto mdlpfns = (PFN_NUMBER**)ExAllocatePoolWithTag(NonPagedPool, sizeof(PFN_NUMBER*) * array_info.raid_disks, ALLOC_TAG);
+        auto mdlpfns = (PFN_NUMBER**)ExAllocatePoolWithTag(NonPagedPool, sizeof(PFN_NUMBER*) * pdo->array_info.raid_disks, ALLOC_TAG);
         if (!mdlpfns) {
             ERR("out of memory\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
             goto end;
         }
 
-        for (uint32_t i = 0; i < array_info.raid_disks; i++) {
-            auto c = child_list[i];
+        for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
+            auto c = pdo->child_list[i];
 
             auto ctxa = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
             if (!ctxa) {
@@ -1485,15 +1486,15 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
         uint32_t stripe_pages = stripe_length / PAGE_SIZE;
 
         while (pos < length) {
-            for (uint32_t i = 0; i < array_info.raid_disks; i++) {
+            for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
                 for (uint32_t k = 0; k < far; k++) {
-                    RtlCopyMemory(&mdlpfns[(i + k) % array_info.raid_disks][k * stripe_pages], pfns, sizeof(PFN_NUMBER) * stripe_pages);
+                    RtlCopyMemory(&mdlpfns[(i + k) % pdo->array_info.raid_disks][k * stripe_pages], pfns, sizeof(PFN_NUMBER) * stripe_pages);
                 }
 
                 pfns = &pfns[stripe_pages];
             }
 
-            for (uint32_t i = 0; i < array_info.raid_disks; i++) {
+            for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
                 mdlpfns[i] = &mdlpfns[i][far * stripe_pages];
             }
 
@@ -1570,7 +1571,7 @@ NTSTATUS set_pdo::write_raid10(PIRP Irp) {
     bool is_offset = array_info.layout & 0x10000;
 
     if (is_offset)
-        return write_raid10_offset(Irp);
+        return write_raid10_offset(this, Irp);
 
     if (array_info.raid_disks % near != 0)
         return write_raid10_odd(this, Irp);
