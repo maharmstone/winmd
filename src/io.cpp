@@ -499,65 +499,90 @@ end:
 }
 
 NTSTATUS set_device::write(PIRP Irp, bool* no_complete) {
+    NTSTATUS Status;
+    PIO_STACK_LOCATION IrpSp;
+
     TRACE("(%p)\n", Irp);
 
     if (!pdo)
         return STATUS_INVALID_DEVICE_REQUEST;
 
-    shared_eresource l(&pdo->lock);
+    ExAcquireResourceSharedLite(&pdo->lock, true);
 
-    if (!pdo->loaded)
-        return STATUS_DEVICE_NOT_READY;
+    if (!pdo->loaded) {
+        Status = STATUS_DEVICE_NOT_READY;
+        goto end;
+    }
 
-    if (pdo->readonly)
-        return STATUS_MEDIA_WRITE_PROTECTED;
+    if (pdo->readonly) {
+        Status = STATUS_MEDIA_WRITE_PROTECTED;
+        goto end;
+    }
 
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
     if (IrpSp->Parameters.Write.ByteOffset.QuadPart < 0) {
         WARN("write start is negative\n");
-        return STATUS_INVALID_PARAMETER;
+        Status = STATUS_INVALID_PARAMETER;
+        goto end;
     }
 
     if ((uint64_t)IrpSp->Parameters.Write.ByteOffset.QuadPart >= pdo->array_size) {
         WARN("trying to write past end of device\n");
-        return STATUS_INVALID_PARAMETER;
+        Status = STATUS_INVALID_PARAMETER;
+        goto end;
     }
 
     if ((uint64_t)IrpSp->Parameters.Write.ByteOffset.QuadPart + IrpSp->Parameters.Write.Length > pdo->array_size)
         IrpSp->Parameters.Write.Length = (ULONG)(pdo->array_size - IrpSp->Parameters.Write.ByteOffset.QuadPart);
 
-    if (IrpSp->Parameters.Write.ByteOffset.QuadPart % devobj->SectorSize || IrpSp->Parameters.Write.Length % devobj->SectorSize)
-        return STATUS_INVALID_PARAMETER;
+    if (IrpSp->Parameters.Write.ByteOffset.QuadPart % devobj->SectorSize || IrpSp->Parameters.Write.Length % devobj->SectorSize) {
+        Status = STATUS_INVALID_PARAMETER;
+        goto end;
+    }
 
     Irp->IoStatus.Information = IrpSp->Parameters.Write.Length;
 
-    if (IrpSp->Parameters.Write.Length == 0)
-        return STATUS_SUCCESS;
+    if (IrpSp->Parameters.Write.Length == 0) {
+        Status = STATUS_SUCCESS;
+        goto end;
+    }
 
     switch (pdo->array_info.level) {
         case RAID_LEVEL_0:
-            return pdo->write_raid0(Irp, no_complete);
+            Status = pdo->write_raid0(Irp, no_complete);
+            break;
 
         case RAID_LEVEL_1:
-            return pdo->write_raid1(Irp);
+            Status = pdo->write_raid1(Irp);
+            break;
 
         case RAID_LEVEL_4:
         case RAID_LEVEL_5:
-            return pdo->write_raid45(Irp, no_complete);
+            Status = pdo->write_raid45(Irp, no_complete);
+            break;
 
         case RAID_LEVEL_6:
-            return pdo->write_raid6(Irp, no_complete);
+            Status = pdo->write_raid6(Irp, no_complete);
+            break;
 
         case RAID_LEVEL_10:
-            return pdo->write_raid10(Irp);
+            Status = pdo->write_raid10(Irp);
+            break;
 
         case RAID_LEVEL_LINEAR:
-            return pdo->write_linear(Irp, no_complete);
+            Status = pdo->write_linear(Irp, no_complete);
+            break;
 
         default:
-            return STATUS_INVALID_DEVICE_REQUEST;
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+            break;
     }
+
+end:
+    ExReleaseResourceLite(&pdo->lock);
+
+    return Status;
 }
 
 NTSTATUS device::write(PIRP, bool*) {
