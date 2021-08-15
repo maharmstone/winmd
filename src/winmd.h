@@ -293,9 +293,6 @@ public:
     KEVENT flush_thread_finished;
     bool readonly = false;
     UNICODE_STRING bus_name;
-
-private:
-    NTSTATUS write_raid10(PIRP Irp);
 };
 
 static __inline void get_raid0_offset(uint64_t off, uint64_t stripe_length, uint32_t num_stripes, uint64_t* stripeoff, uint32_t* stripe) {
@@ -346,6 +343,7 @@ NTSTATUS flush_partial_chunk_raid6(set_pdo* pdo, partial_chunk* pc, RTL_BITMAP* 
 
 // raid10.cpp
 NTSTATUS read_raid10(set_pdo* pdo, PIRP Irp, bool* no_complete);
+NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp);
 
 // linear.cpp
 NTSTATUS read_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
