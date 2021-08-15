@@ -306,7 +306,6 @@ private:
     NTSTATUS write_raid10_odd(PIRP Irp);
     NTSTATUS write_raid10_offset(PIRP Irp);
     NTSTATUS write_raid10_offset_partial(LIST_ENTRY* ctxs, uint64_t offset, uint32_t length, PFN_NUMBER* src_pfns, uint32_t mdl_offset);
-    NTSTATUS write_linear(PIRP Irp, bool* no_complete);
     NTSTATUS add_partial_chunk(uint64_t offset, uint32_t length, void* data);
     NTSTATUS flush_partial_chunk(partial_chunk* pc);
     NTSTATUS flush_partial_chunk_raid45(partial_chunk* pc, RTL_BITMAP* valid_bmp);
@@ -354,6 +353,7 @@ NTSTATUS write_raid1(set_pdo* pdo, PIRP Irp);
 
 // linear.cpp
 NTSTATUS read_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
+NTSTATUS write_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
 
 class io_context {
 public:
