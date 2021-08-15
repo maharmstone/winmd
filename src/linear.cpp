@@ -118,10 +118,12 @@ NTSTATUS set_pdo::read_linear(PIRP Irp, bool* no_complete) {
     uint64_t offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Read.Length;
 
-    shared_eresource l(&lock);
+    ExAcquireResourceSharedLite(&lock, true);
 
     for (uint32_t i = 0; i < array_info.raid_disks; i++) {
         if (offset < (child_list[i]->disk_info.data_size * 512)) {
+            NTSTATUS Status;
+
             if (offset + length < (child_list[i]->disk_info.data_size * 512) || i == array_info.raid_disks - 1) {
                 auto c = child_list[i];
 
@@ -137,13 +139,19 @@ NTSTATUS set_pdo::read_linear(PIRP Irp, bool* no_complete) {
 
                 *no_complete = true;
 
-                return IoCallDriver(c->device, Irp);
+                Status = IoCallDriver(c->device, Irp);
             } else
-                return io_linear2(Irp, offset, i, false);
+                Status = io_linear2(Irp, offset, i, false);
+
+            ExReleaseResourceLite(&lock);
+
+            return Status;
         }
 
         offset -= child_list[i]->disk_info.data_size * 512;
     }
+
+    ExReleaseResourceLite(&lock);
 
     return STATUS_INVALID_PARAMETER;
 }
