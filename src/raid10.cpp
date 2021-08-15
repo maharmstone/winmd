@@ -1273,7 +1273,7 @@ end:
     return Status;
 }
 
-NTSTATUS set_pdo::write_raid10_offset_partial(klist<io_context>& ctxs, uint64_t offset, uint32_t length, PFN_NUMBER* src_pfns, uint32_t mdl_offset) {
+NTSTATUS set_pdo::write_raid10_offset_partial(LIST_ENTRY* ctxs, uint64_t offset, uint32_t length, PFN_NUMBER* src_pfns, uint32_t mdl_offset) {
     uint8_t far = (array_info.layout >> 8) & 0xff;
     uint64_t startoff, endoff;
     uint32_t startoffstripe, endoffstripe;
@@ -1291,39 +1291,54 @@ NTSTATUS set_pdo::write_raid10_offset_partial(klist<io_context>& ctxs, uint64_t 
         uint32_t len = min(length - pos, i == startoffstripe ? (stripe_length - (startoff % stripe_length)) : stripe_length);
 
         auto c = child_list[i];
-        ctxs.emplace_back_np(c, stripe_start + (c->disk_info.data_offset * 512), stripe_start + (c->disk_info.data_offset * 512) + len);
-        auto& ctxa = ctxs.back();
 
-        ctxa.mdl = IoAllocateMdl(nullptr, len + mdl_offset, false, false, nullptr);
-        if (!ctxa.mdl) {
+        auto ctxa = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
+        if (!ctxa) {
+            ERR("out of memory\n");
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        new (ctxa) io_context(c, stripe_start + (c->disk_info.data_offset * 512), stripe_start + (c->disk_info.data_offset * 512) + len);
+
+        InsertTailList(ctxs, &ctxa->list_entry);
+
+        ctxa->mdl = IoAllocateMdl(nullptr, len + mdl_offset, false, false, nullptr);
+        if (!ctxa->mdl) {
             ERR("IoAllocateMdl failed\n");
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
-        ctxa.mdl->MdlFlags |= MDL_PARTIAL;
+        ctxa->mdl->MdlFlags |= MDL_PARTIAL;
 
-        ctxa.mdl->ByteOffset = mdl_offset;
+        ctxa->mdl->ByteOffset = mdl_offset;
 
-        ctxa.Irp->MdlAddress = ctxa.mdl;
+        ctxa->Irp->MdlAddress = ctxa->mdl;
 
         uint32_t pages = (len + mdl_offset) / PAGE_SIZE;
 
         if ((len + mdl_offset) % PAGE_SIZE != 0)
             pages++;
 
-        auto ctx_pfns = MmGetMdlPfnArray(ctxa.mdl);
+        auto ctx_pfns = MmGetMdlPfnArray(ctxa->mdl);
 
         RtlCopyMemory(ctx_pfns, pfns, pages * sizeof(PFN_NUMBER));
         pfns = &pfns[len / PAGE_SIZE];
 
         for (uint32_t k = 1; k < far; k++) {
             auto c = child_list[(i + 1) % array_info.raid_disks];
-            ctxs.emplace_back_np(c, stripe_start + (k * stripe_length) + (c->disk_info.data_offset * 512),
-                                 stripe_start + len + (k * stripe_length) + (c->disk_info.data_offset * 512));
 
-            auto& ctxb = ctxs.back();
+            auto ctxb = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
+            if (!ctxb) {
+                ERR("out of memory\n");
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
 
-            ctxb.Irp->MdlAddress = ctxa.mdl;
+            new (ctxb) io_context(c, stripe_start + (k * stripe_length) + (c->disk_info.data_offset * 512),
+                                  stripe_start + len + (k * stripe_length) + (c->disk_info.data_offset * 512));
+
+            InsertTailList(ctxs, &ctxb->list_entry);
+
+            ctxb->Irp->MdlAddress = ctxa->mdl;
         }
 
         pos += len;
@@ -1340,6 +1355,7 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
     uint32_t length = IrpSp->Parameters.Write.Length;
     uint32_t stripe_length = array_info.chunksize * 512;
     uint32_t full_stripe = array_info.raid_disks * stripe_length;
+    LIST_ENTRY ctxs;
 
     mdl_locked = Irp->MdlAddress->MdlFlags & (MDL_PAGES_LOCKED | MDL_PARTIAL);
 
@@ -1358,7 +1374,7 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
         }
     }
 
-    klist<io_context> ctxs;
+    InitializeListHead(&ctxs);
 
     auto src_pfns = MmGetMdlPfnArray(Irp->MdlAddress);
     uint32_t mdl_offset = Irp->MdlAddress->ByteOffset;
@@ -1366,7 +1382,7 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
     if (offset % full_stripe != 0) {
         uint32_t partial_len = min(length, full_stripe - (offset % full_stripe));
 
-        Status = write_raid10_offset_partial(ctxs, offset, partial_len, src_pfns, mdl_offset);
+        Status = write_raid10_offset_partial(&ctxs, offset, partial_len, src_pfns, mdl_offset);
         if (!NT_SUCCESS(Status)) {
             ERR("write_raid10_offset_partial returned %08x\n", Status);
             goto end;
@@ -1392,7 +1408,7 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
     if (length % full_stripe != 0) {
         uint32_t partial_len = length % full_stripe;
 
-        Status = write_raid10_offset_partial(ctxs, offset + length - partial_len, partial_len, &src_pfns[(length - partial_len) / PAGE_SIZE], mdl_offset);
+        Status = write_raid10_offset_partial(&ctxs, offset + length - partial_len, partial_len, &src_pfns[(length - partial_len) / PAGE_SIZE], mdl_offset);
         if (!NT_SUCCESS(Status)) {
             ERR("write_raid10_offset_partial returned %08x\n", Status);
             goto end;
@@ -1415,24 +1431,33 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
 
         for (uint32_t i = 0; i < array_info.raid_disks; i++) {
             auto c = child_list[i];
-            ctxs.emplace_back_np(c, stripe_start + (c->disk_info.data_offset * 512), stripe_start + (c->disk_info.data_offset * 512) + len);
-            auto& ctxa = ctxs.back();
 
-            ctxa.mdl = IoAllocateMdl(nullptr, len + mdl_offset, false, false, nullptr);
-            if (!ctxa.mdl) {
+            auto ctxa = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
+            if (!ctxa) {
+                ERR("out of memory\n");
+                Status = STATUS_INSUFFICIENT_RESOURCES;
+                goto end;
+            }
+
+            new (ctxa) io_context(c, stripe_start + (c->disk_info.data_offset * 512), stripe_start + (c->disk_info.data_offset * 512) + len);
+
+            InsertTailList(&ctxs, &ctxa->list_entry);
+
+            ctxa->mdl = IoAllocateMdl(nullptr, len + mdl_offset, false, false, nullptr);
+            if (!ctxa->mdl) {
                 ERR("IoAllocateMdl failed\n");
                 ExFreePool(mdlpfns);
                 Status = STATUS_INSUFFICIENT_RESOURCES;
                 goto end;
             }
 
-            ctxa.mdl->MdlFlags |= MDL_PARTIAL;
+            ctxa->mdl->MdlFlags |= MDL_PARTIAL;
 
-            ctxa.mdl->ByteOffset = mdl_offset;
+            ctxa->mdl->ByteOffset = mdl_offset;
 
-            ctxa.Irp->MdlAddress = ctxa.mdl;
+            ctxa->Irp->MdlAddress = ctxa->mdl;
 
-            mdlpfns[i] = MmGetMdlPfnArray(ctxa.mdl);
+            mdlpfns[i] = MmGetMdlPfnArray(ctxa->mdl);
         }
 
         uint32_t pos = 0;
@@ -1459,18 +1484,18 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
     }
 
     {
-        LIST_ENTRY* le = ctxs.list.Flink;
-        while (le != &ctxs.list) {
-            auto& ctx = ctxs.entry(le);
+        LIST_ENTRY* le = ctxs.Flink;
+        while (le != &ctxs) {
+            auto ctx = CONTAINING_RECORD(le, io_context, list_entry);
 
-            auto IrpSp = IoGetNextIrpStackLocation(ctx.Irp);
+            auto IrpSp = IoGetNextIrpStackLocation(ctx->Irp);
             IrpSp->MajorFunction = IRP_MJ_WRITE;
 
-            IrpSp->FileObject = ctx.sc->fileobj;
-            IrpSp->Parameters.Write.ByteOffset.QuadPart = ctx.stripe_start;
-            IrpSp->Parameters.Write.Length = (ULONG)(ctx.stripe_end - ctx.stripe_start);
+            IrpSp->FileObject = ctx->sc->fileobj;
+            IrpSp->Parameters.Write.ByteOffset.QuadPart = ctx->stripe_start;
+            IrpSp->Parameters.Write.Length = (ULONG)(ctx->stripe_end - ctx->stripe_start);
 
-            ctx.Status = IoCallDriver(ctx.sc->device, ctx.Irp);
+            ctx->Status = IoCallDriver(ctx->sc->device, ctx->Irp);
 
             le = le->Flink;
         }
@@ -1478,28 +1503,33 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
 
     Status = STATUS_SUCCESS;
 
-    {
-        LIST_ENTRY* le = ctxs.list.Flink;
-        while (le != &ctxs.list) {
-            auto& ctx = ctxs.entry(le);
+    while (!IsListEmpty(&ctxs)) {
+        auto ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
 
-            if (ctx.Status == STATUS_PENDING) {
-                KeWaitForSingleObject(&ctx.Event, Executive, KernelMode, false, nullptr);
-                ctx.Status = ctx.iosb.Status;
-            }
-
-            if (!NT_SUCCESS(ctx.Status)) {
-                ERR("writing returned %08x\n", ctx.Status);
-                Status = ctx.Status;
-            }
-
-            le = le->Flink;
+        if (ctx->Status == STATUS_PENDING) {
+            KeWaitForSingleObject(&ctx->Event, Executive, KernelMode, false, nullptr);
+            ctx->Status = ctx->iosb.Status;
         }
+
+        if (!NT_SUCCESS(ctx->Status)) {
+            ERR("writing returned %08x\n", ctx->Status);
+            Status = ctx->Status;
+        }
+
+        ctx->~io_context();
+        ExFreePool(ctx);
     }
 
 end:
     if (!mdl_locked)
         MmUnlockPages(Irp->MdlAddress);
+
+    while (!IsListEmpty(&ctxs)) {
+        auto ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
+
+        ctx->~io_context();
+        ExFreePool(ctx);
+    }
 
     return Status;
 }
