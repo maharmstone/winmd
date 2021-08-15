@@ -178,7 +178,7 @@ NTSTATUS control_device::query_hardware_ids(PIRP Irp) {
 }
 
 NTSTATUS control_device::query_device_relations(PIRP Irp) {
-    shared_eresource lock(&dev_lock);
+    ExAcquireResourceSharedLite(&dev_lock, true);
 
     unsigned int num_children = 0;
 
@@ -197,6 +197,7 @@ NTSTATUS control_device::query_device_relations(PIRP Irp) {
 
     if (!dr) {
         ERR("out of memory\n");
+        ExReleaseResourceLite(&dev_lock);
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -218,6 +219,8 @@ NTSTATUS control_device::query_device_relations(PIRP Irp) {
     }
 
     Irp->IoStatus.Information = (ULONG_PTR)dr;
+
+    ExReleaseResourceLite(&dev_lock);
 
     return STATUS_SUCCESS;
 }
