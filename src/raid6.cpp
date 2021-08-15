@@ -1353,14 +1353,14 @@ static void paranoid_raid6_check(set_pdo* pdo, uint64_t parity_offset, uint32_t 
     p = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
     if (!p) {
         ERR("out of memory\n");
-        return;
+        goto end2;
     }
 
     q = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
     if (!q) {
         ERR("out of memory\n");
         ExFreePool(p);
-        return;
+        goto end2;
     }
 
     ctxp = (io_context**)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context*) * pdo->array_info.raid_disks,
@@ -1370,7 +1370,7 @@ static void paranoid_raid6_check(set_pdo* pdo, uint64_t parity_offset, uint32_t 
         ERR("out of memory\n");
         ExFreePool(q);
         ExFreePool(p);
-        return;
+        goto end2;
     }
 
     {
