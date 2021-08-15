@@ -794,7 +794,7 @@ NTSTATUS set_pdo::create(PIRP Irp) {
     return STATUS_SUCCESS;
 }
 
-NTSTATUS set_pdo::mountdev_query_device_name(PIRP Irp) {
+static NTSTATUS mountdev_query_device_name(mdraid_array_info* array_info, PIRP Irp) {
     PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
     if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(MOUNTDEV_NAME)) {
@@ -815,8 +815,8 @@ NTSTATUS set_pdo::mountdev_query_device_name(PIRP Irp) {
 
     auto p = &name->Name[(sizeof(device_prefix) / sizeof(char16_t)) - 1];
     for (uint8_t i = 0; i < 16; i++) {
-        *p = hex_digit((array_info.set_uuid[i] & 0xf0) >> 4); p++;
-        *p = hex_digit(array_info.set_uuid[i] & 0xf); p++;
+        *p = hex_digit((array_info->set_uuid[i] & 0xf0) >> 4); p++;
+        *p = hex_digit(array_info->set_uuid[i] & 0xf); p++;
 
         if (i == 3 || i == 5 || i == 7 || i == 9) {
             *p = u'-'; p++;
@@ -951,7 +951,7 @@ NTSTATUS set_device::device_control(PIRP Irp) {
 
     switch (IrpSp->Parameters.DeviceIoControl.IoControlCode) {
         case IOCTL_MOUNTDEV_QUERY_DEVICE_NAME:
-            return pdo->mountdev_query_device_name(Irp);
+            return mountdev_query_device_name(&pdo->array_info, Irp);
 
         case IOCTL_MOUNTDEV_QUERY_UNIQUE_ID:
             return pdo->mountdev_query_unique_id(Irp);
