@@ -974,10 +974,10 @@ NTSTATUS set_device::device_control(PIRP Irp) {
 NTSTATUS set_pdo::shutdown(PIRP Irp) {
     TRACE("(%p, %p)\n", this, Irp);
 
-    exclusive_eresource l(&lock);
+    ExAcquireResourceExclusiveLite(&lock, true);
 
     if (readonly)
-        return STATUS_SUCCESS;
+        goto end;
 
     readonly = true;
 
@@ -999,6 +999,9 @@ NTSTATUS set_pdo::shutdown(PIRP Irp) {
     }
 
     // FIXME - mark superblocks as clean(?)
+
+end:
+    ExReleaseResourceLite(&lock);
 
     return STATUS_SUCCESS;
 }
