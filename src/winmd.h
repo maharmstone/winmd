@@ -291,23 +291,6 @@ struct partial_chunk {
 class io_context;
 class set_pdo;
 
-template<POOL_TYPE PoolType>
-class kernel_buffer {
-public:
-    kernel_buffer(size_t length) {
-        buf = (uint8_t*)ExAllocatePoolWithTag(PoolType, length, ALLOC_TAG);
-    }
-
-    ~kernel_buffer() {
-        if (buf)
-            ExFreePool(buf);
-    }
-
-    uint8_t* buf = nullptr;
-};
-
-typedef kernel_buffer<NonPagedPool> np_buffer;
-
 class set_device : device {
 public:
     set_device(set_pdo* pdo, PDEVICE_OBJECT devobj) : pdo(pdo), devobj(devobj) {
