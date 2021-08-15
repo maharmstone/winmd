@@ -690,30 +690,48 @@ end:
 }
 
 NTSTATUS set_pdo::read_raid10(PIRP Irp, bool* no_complete) {
+    NTSTATUS Status;
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
     bool mdl_locked = true;
+    uint8_t near, far;
+    bool is_offset;
+    uint64_t offset, start_chunk, end_chunk;
+    uint32_t length;
+    uint64_t startoff, endoff;
+    uint32_t startoffstripe, endoffstripe;
+    uint8_t* tmpbuf;
+    PMDL tmpmdl;
+    uint32_t stripe_length, skip_first;
+    uint32_t near_shift, far_shift;
+    io_context* ctxs;
 
-    shared_eresource l(&lock);
+    ExAcquireResourceSharedLite(&lock, true);
 
-    if (array_info.chunksize == 0 || (array_info.chunksize * 512) % PAGE_SIZE != 0)
-        return STATUS_INTERNAL_ERROR;
+    if (array_info.chunksize == 0 || (array_info.chunksize * 512) % PAGE_SIZE != 0) {
+        Status = STATUS_INTERNAL_ERROR;
+        goto end2;
+    }
 
-    uint8_t near = array_info.layout & 0xff;
-    uint8_t far = (array_info.layout >> 8) & 0xff;
-    bool is_offset = array_info.layout & 0x10000;
+    near = array_info.layout & 0xff;
+    far = (array_info.layout >> 8) & 0xff;
+    is_offset = array_info.layout & 0x10000;
 
     read_device++;
 
-    if (is_offset)
-        return read_raid10_offset(Irp, no_complete);
+    if (is_offset) {
+        Status = read_raid10_offset(Irp, no_complete);
+        goto end2;
+    }
 
-    if (array_info.raid_disks % near != 0)
-        return read_raid10_odd(Irp, no_complete);
+    if (array_info.raid_disks % near != 0) {
+        Status = read_raid10_odd(Irp, no_complete);
+        goto end2;
+    }
 
-    uint64_t offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
-    uint32_t length = IrpSp->Parameters.Read.Length;
-    uint64_t start_chunk = offset / (array_info.chunksize * 512);
-    uint64_t end_chunk = (offset + length - 1) / (array_info.chunksize * 512);
+    offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
+    length = IrpSp->Parameters.Read.Length;
+    start_chunk = offset / (array_info.chunksize * 512);
+    end_chunk = (offset + length - 1) / (array_info.chunksize * 512);
 
     if (start_chunk == end_chunk) { // small reads, on one device
         uint32_t near_shift = read_device % near;
@@ -737,17 +755,16 @@ NTSTATUS set_pdo::read_raid10(PIRP Irp, bool* no_complete) {
 
         *no_complete = true;
 
-        return IoCallDriver(c->device, Irp);
+        Status = IoCallDriver(c->device, Irp);
+        goto end2;
     }
 
-    uint64_t startoff, endoff;
-    uint32_t startoffstripe, endoffstripe;
-    uint8_t* tmpbuf = nullptr;
-    PMDL tmpmdl = nullptr;
+    tmpbuf = nullptr;
+    tmpmdl = nullptr;
 
-    uint32_t stripe_length = array_info.chunksize * 512;
+    stripe_length = array_info.chunksize * 512;
 
-    uint32_t skip_first = offset % PAGE_SIZE;
+    skip_first = offset % PAGE_SIZE;
 
     offset -= skip_first;
     length += skip_first;
@@ -755,10 +772,11 @@ NTSTATUS set_pdo::read_raid10(PIRP Irp, bool* no_complete) {
     get_raid0_offset(offset, stripe_length, array_info.raid_disks / near, &startoff, &startoffstripe);
     get_raid0_offset(offset + length - 1, stripe_length, array_info.raid_disks / near, &endoff, &endoffstripe);
 
-    auto ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * array_info.raid_disks / near, ALLOC_TAG);
+    ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * array_info.raid_disks / near, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto end2;
     }
 
     RtlZeroMemory(ctxs, sizeof(io_context) * array_info.raid_disks / near);
@@ -779,10 +797,8 @@ NTSTATUS set_pdo::read_raid10(PIRP Irp, bool* no_complete) {
             ctxs[i].stripe_end = endoff - (endoff % stripe_length);
     }
 
-    NTSTATUS Status;
-
-    uint32_t near_shift = read_device % near;
-    uint32_t far_shift = (read_device % (far * near)) / near;
+    near_shift = read_device % near;
+    far_shift = (read_device % (far * near)) / near;
 
     for (unsigned int i = 0; i < array_info.raid_disks / near; i++) {
         if (ctxs[i].stripe_end != ctxs[i].stripe_start) {
@@ -957,6 +973,9 @@ end:
 
     if (tmpbuf)
         ExFreePool(tmpbuf);
+
+end2:
+    ExReleaseResourceLite(&lock);
 
     return Status;
 }
