@@ -428,20 +428,20 @@ void __stdcall flush_thread(void* context) {
     sd->flush_thread();
 }
 
-NTSTATUS set_pdo::add_partial_chunk(uint64_t offset, uint32_t length, void* data) {
+NTSTATUS add_partial_chunk(set_pdo* pdo, uint64_t offset, uint32_t length, void* data) {
     NTSTATUS Status;
-    uint32_t data_disks = array_info.raid_disks - (array_info.level == RAID_LEVEL_6 ? 2 : 1);
-    uint32_t full_chunk = array_info.chunksize * 512 * data_disks;
+    uint32_t data_disks = pdo->array_info.raid_disks - (pdo->array_info.level == RAID_LEVEL_6 ? 2 : 1);
+    uint32_t full_chunk = pdo->array_info.chunksize * 512 * data_disks;
     partial_chunk* pc;
     uint32_t pclen;
 
     uint64_t chunk_offset = offset - (offset % full_chunk);
 
-    ExAcquireResourceExclusiveLite(&partial_chunks_lock, true);
+    ExAcquireResourceExclusiveLite(&pdo->partial_chunks_lock, true);
 
-    LIST_ENTRY* le = partial_chunks.Flink;
+    LIST_ENTRY* le = pdo->partial_chunks.Flink;
 
-    while (le != &partial_chunks) {
+    while (le != &pdo->partial_chunks) {
         auto pc = CONTAINING_RECORD(le, partial_chunk, list_entry);
 
         if (pc->offset == chunk_offset) {
@@ -449,8 +449,8 @@ NTSTATUS set_pdo::add_partial_chunk(uint64_t offset, uint32_t length, void* data
 
             RtlClearBits(&pc->bmp, (ULONG)((offset - chunk_offset) / 512), length / 512);
 
-            if (RtlAreBitsClear(&pc->bmp, 0, array_info.chunksize * data_disks)) {
-                NTSTATUS Status = flush_partial_chunk(pc);
+            if (RtlAreBitsClear(&pc->bmp, 0, pdo->array_info.chunksize * data_disks)) {
+                NTSTATUS Status = pdo->flush_partial_chunk(pc);
                 if (!NT_SUCCESS(Status)) {
                     ERR("flush_partial_chunk returned %08x\n", Status);
                     goto end;
@@ -470,7 +470,7 @@ NTSTATUS set_pdo::add_partial_chunk(uint64_t offset, uint32_t length, void* data
 
     pclen = offsetof(partial_chunk, data[0]);
     pclen += full_chunk; // data length
-    pclen += sector_align(array_info.chunksize * data_disks, 32) / 8; // bitmap length
+    pclen += sector_align(pdo->array_info.chunksize * data_disks, 32) / 8; // bitmap length
 
     pc = (partial_chunk*)ExAllocatePoolWithTag(NonPagedPool/*FIXME - ?*/, pclen, ALLOC_TAG);
     if (!pc) {
@@ -481,8 +481,8 @@ NTSTATUS set_pdo::add_partial_chunk(uint64_t offset, uint32_t length, void* data
 
     pc->offset = chunk_offset;
 
-    RtlInitializeBitMap(&pc->bmp, (ULONG*)(pc->data + full_chunk), array_info.chunksize * data_disks);
-    RtlSetBits(&pc->bmp, 0, array_info.chunksize * data_disks);
+    RtlInitializeBitMap(&pc->bmp, (ULONG*)(pc->data + full_chunk), pdo->array_info.chunksize * data_disks);
+    RtlSetBits(&pc->bmp, 0, pdo->array_info.chunksize * data_disks);
 
     RtlCopyMemory(pc->data + offset - chunk_offset, data, length);
 
@@ -493,7 +493,7 @@ NTSTATUS set_pdo::add_partial_chunk(uint64_t offset, uint32_t length, void* data
     Status = STATUS_SUCCESS;
 
 end:
-    ExReleaseResourceLite(&partial_chunks_lock);
+    ExReleaseResourceLite(&pdo->partial_chunks_lock);
 
     return Status;
 }

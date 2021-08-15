@@ -624,7 +624,7 @@ NTSTATUS set_pdo::write_raid45(PIRP Irp, bool* no_complete) {
     data = (uint8_t*)MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 
     if (offset % full_chunk != 0) {
-        Status = add_partial_chunk(offset, min(length, full_chunk - (offset % full_chunk)), data);
+        Status = add_partial_chunk(this, offset, min(length, full_chunk - (offset % full_chunk)), data);
         if (!NT_SUCCESS(Status))
             goto end;
 
@@ -635,7 +635,7 @@ NTSTATUS set_pdo::write_raid45(PIRP Irp, bool* no_complete) {
 
     if (parity_length % full_chunk != 0) {
         // FIXME - don't call if covered by previous add_partial_chunk
-        Status = add_partial_chunk(parity_offset + parity_length - (parity_length % full_chunk), parity_length % full_chunk,
+        Status = add_partial_chunk(this, parity_offset + parity_length - (parity_length % full_chunk), parity_length % full_chunk,
                                    data + parity_offset - offset + parity_length - (parity_length % full_chunk));
         if (!NT_SUCCESS(Status))
             goto end;

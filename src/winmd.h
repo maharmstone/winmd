@@ -294,6 +294,8 @@ public:
     bool readonly = false;
     UNICODE_STRING bus_name;
 
+    NTSTATUS flush_partial_chunk(partial_chunk* pc);
+
 private:
     NTSTATUS read_raid45(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid6(PIRP Irp, bool* no_complete);
@@ -306,8 +308,6 @@ private:
     NTSTATUS write_raid10_odd(PIRP Irp);
     NTSTATUS write_raid10_offset(PIRP Irp);
     NTSTATUS write_raid10_offset_partial(LIST_ENTRY* ctxs, uint64_t offset, uint32_t length, PFN_NUMBER* src_pfns, uint32_t mdl_offset);
-    NTSTATUS add_partial_chunk(uint64_t offset, uint32_t length, void* data);
-    NTSTATUS flush_partial_chunk(partial_chunk* pc);
     NTSTATUS flush_partial_chunk_raid45(partial_chunk* pc, RTL_BITMAP* valid_bmp);
     NTSTATUS flush_partial_chunk_raid6(partial_chunk* pc, RTL_BITMAP* valid_bmp);
     void flush_chunks();
@@ -338,6 +338,7 @@ NTSTATUS drv_write(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 void __stdcall flush_thread(void* context);
 NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx);
 void do_xor(uint8_t* buf1, uint8_t* buf2, uint32_t len);
+NTSTATUS add_partial_chunk(set_pdo* pdo, uint64_t offset, uint32_t length, void* data);
 
 // pnp.cpp
 NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp);
