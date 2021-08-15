@@ -468,8 +468,8 @@ end2:
 }
 
 #ifdef DEBUG_PARANOID
-void set_pdo::paranoid_raid5_check(uint64_t parity_offset, uint32_t parity_length) {
-    uint32_t data_disks = array_info.raid_disks - 1;
+static void paranoid_raid5_check(set_pdo* pdo, uint64_t parity_offset, uint32_t parity_length) {
+    uint32_t data_disks = pdo->array_info.raid_disks - 1;
     uint64_t read_offset = parity_offset / data_disks;
     LIST_ENTRY ctxs;
     LIST_ENTRY* le;
@@ -479,14 +479,14 @@ void set_pdo::paranoid_raid5_check(uint64_t parity_offset, uint32_t parity_lengt
 
     InitializeListHead(&ctxs);
 
-    for (uint32_t i = 0; i < array_info.raid_disks; i++) {
+    for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
         auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
         if (!last) {
             ERR("out of memory\n");
             goto end;
         }
 
-        new (last) io_context(child_list[i], read_offset + (child_list[i]->disk_info.data_offset * 512), parity_length);
+        new (last) io_context(pdo->child_list[i], read_offset + (pdo->child_list[i]->disk_info.data_offset * 512), parity_length);
 
         InsertTailList(&ctxs, &last->list_entry);
 
@@ -1065,7 +1065,7 @@ NTSTATUS write_raid45(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
 #ifdef DEBUG_PARANOID
     if (parity_length != 0)
-        paranoid_raid5_check(parity_offset, parity_length);
+        paranoid_raid5_check(pdo, parity_offset, parity_length);
 #endif
 
 end:
