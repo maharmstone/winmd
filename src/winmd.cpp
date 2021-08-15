@@ -764,8 +764,10 @@ static void __stdcall DriverUnload(PDRIVER_OBJECT DriverObject) {
     ExDeleteResourceLite(&dev_lock);
 
 #ifdef _DEBUG
-    if (logger)
-        delete logger;
+    if (logger) {
+        logger->~serial_logger();
+        ExFreePool(logger);
+    }
 #endif
 }
 
@@ -1294,8 +1296,15 @@ extern "C" NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_
     read_registry(RegistryPath);
 
 #ifdef _DEBUG
-    if (debug_log_level > 0)
-        logger = new serial_logger;
+    if (debug_log_level > 0) {
+        logger = ExAllocatePoolWithTag(NonPagedPool, sizeof(serial_logger), ALLOC_TAG);
+        if (!logger) {
+            ERR("out of memory\n");
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+
+        new (logger) serial_logger;
+    }
 #endif
 
     TRACE("(%p, %.*S)\n", DriverObject, RegistryPath->Length / sizeof(WCHAR), RegistryPath->Buffer);

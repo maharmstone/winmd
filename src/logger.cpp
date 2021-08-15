@@ -259,12 +259,4 @@ exit2:
     if (buf2)
         ExFreePool(buf2);
 }
-
-void* serial_logger::operator new(size_t size) {
-    return ExAllocatePoolWithTag(NonPagedPool, size, ALLOC_TAG);
-}
-
-void serial_logger::operator delete(void* p) {
-    ExFreePool(p);
-}
 #endif

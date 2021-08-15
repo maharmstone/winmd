@@ -34,9 +34,6 @@ public:
     serial_logger();
     ~serial_logger();
 
-    void* operator new(size_t size);
-    void operator delete(void* p);
-
     void log(const char* func, const char* msg, ...);
 
 private:
