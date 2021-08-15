@@ -1255,85 +1255,98 @@ end:
 void set_pdo::paranoid_raid6_check(uint64_t parity_offset, uint32_t parity_length) {
     uint32_t data_disks = array_info.raid_disks - 2;
     uint64_t read_offset = parity_offset / data_disks;
+    LIST_ENTRY ctxs;
+    uint32_t stripe_length, chunks;
+    io_context** ctxp;
+    uint8_t* p;
+    uint8_t* q;
+    LIST_ENTRY* le;
 
     parity_length /= data_disks;
 
-    klist<io_context> ctxs;
+    InitializeListHead(&ctxs);
 
     for (uint32_t i = 0; i < array_info.raid_disks; i++) {
-        ctxs.emplace_back_np(child_list[i], read_offset + (child_list[i]->disk_info.data_offset * 512), parity_length);
-        auto& last = ctxs.back();
-
-        if (!NT_SUCCESS(last.Status)) {
-            ERR("io_context constructor returned %08x\n", last.Status);
-            return;
+        auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
+        if (!last) {
+            ERR("out of memory\n");
+            goto end2;
         }
 
-        last.va = ExAllocatePoolWithTag(NonPagedPool, parity_length, ALLOC_TAG);
-        if (!last.va) {
+        new (last) io_context(child_list[i], read_offset + (child_list[i]->disk_info.data_offset * 512), parity_length);
+
+        InsertTailList(&ctxs, &last->list_entry);
+
+        if (!NT_SUCCESS(last->Status)) {
+            ERR("io_context constructor returned %08x\n", last->Status);
+            goto end2;
+        }
+
+        last->va = ExAllocatePoolWithTag(NonPagedPool, parity_length, ALLOC_TAG);
+        if (!last->va) {
             ERR("out of memory\n");
-            return;
+            goto end2;
         }
     }
 
-    LIST_ENTRY* le = ctxs.list.Flink;
-    while (le != &ctxs.list) {
-        auto& ctx = ctxs.entry(le);
+    le = ctxs.Flink;
+    while (le != &ctxs) {
+        auto ctx = CONTAINING_RECORD(le, io_context, list_entry);
 
-        auto IrpSp = IoGetNextIrpStackLocation(ctx.Irp);
+        auto IrpSp = IoGetNextIrpStackLocation(ctx->Irp);
         IrpSp->MajorFunction = IRP_MJ_READ;
 
-        ctx.mdl = IoAllocateMdl(ctx.va, parity_length, false, false, nullptr);
-        if (!ctx.mdl) {
+        ctx->mdl = IoAllocateMdl(ctx->va, parity_length, false, false, nullptr);
+        if (!ctx->mdl) {
             ERR("IoAllocateMdl failed\n");
-            return;
+            goto end2;
         }
 
-        MmBuildMdlForNonPagedPool(ctx.mdl);
+        MmBuildMdlForNonPagedPool(ctx->mdl);
 
-        ctx.Irp->MdlAddress = ctx.mdl;
+        ctx->Irp->MdlAddress = ctx->mdl;
 
-        IrpSp->FileObject = ctx.sc->fileobj;
-        IrpSp->Parameters.Read.ByteOffset.QuadPart = ctx.stripe_start;
+        IrpSp->FileObject = ctx->sc->fileobj;
+        IrpSp->Parameters.Read.ByteOffset.QuadPart = ctx->stripe_start;
         IrpSp->Parameters.Read.Length = parity_length;
 
-        ctx.Status = IoCallDriver(ctx.sc->device, ctx.Irp);
+        ctx->Status = IoCallDriver(ctx->sc->device, ctx->Irp);
 
         le = le->Flink;
     }
 
-    le = ctxs.list.Flink;
-    while (le != &ctxs.list) {
-        auto& ctx = ctxs.entry(le);
+    le = ctxs.Flink;
+    while (le != &ctxs) {
+        auto ctx = CONTAINING_RECORD(le, io_context, list_entry);
 
-        if (ctx.Status == STATUS_PENDING) {
-            KeWaitForSingleObject(&ctx.Event, Executive, KernelMode, false, nullptr);
-            ctx.Status = ctx.iosb.Status;
+        if (ctx->Status == STATUS_PENDING) {
+            KeWaitForSingleObject(&ctx->Event, Executive, KernelMode, false, nullptr);
+            ctx->Status = ctx->iosb.Status;
         }
 
-        if (!NT_SUCCESS(ctx.Status))
-            ERR("writing returned %08x\n", ctx.Status);
+        if (!NT_SUCCESS(ctx->Status))
+            ERR("writing returned %08x\n", ctx->Status);
 
         le = le->Flink;
     }
 
-    uint32_t stripe_length = array_info.chunksize * 512;
+    stripe_length = array_info.chunksize * 512;
 
-    auto p = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
+    p = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
     if (!p) {
         ERR("out of memory\n");
         return;
     }
 
-    auto q = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
+    q = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
     if (!q) {
         ERR("out of memory\n");
         ExFreePool(p);
         return;
     }
 
-    auto ctxp = (io_context**)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context*) * array_info.raid_disks,
-                                                    ALLOC_TAG);
+    ctxp = (io_context**)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context*) * array_info.raid_disks,
+                                               ALLOC_TAG);
 
     if (!ctxp) {
         ERR("out of memory\n");
@@ -1345,18 +1358,18 @@ void set_pdo::paranoid_raid6_check(uint64_t parity_offset, uint32_t parity_lengt
     {
         uint32_t i = 0;
 
-        LIST_ENTRY* le = ctxs.list.Flink;
-        while (le != &ctxs.list) {
-            auto& ctx = ctxs.entry(le);
+        LIST_ENTRY* le = ctxs.Flink;
+        while (le != &ctxs) {
+            auto ctx = CONTAINING_RECORD(le, io_context, list_entry);
 
-            ctxp[i] = &ctx;
+            ctxp[i] = ctx;
 
             le = le->Flink;
             i++;
         }
     }
 
-    uint32_t chunks = parity_length / stripe_length;
+    chunks = parity_length / stripe_length;
 
     for (uint32_t i = 0; i < chunks; i++) {
         uint64_t offset = parity_offset + (i * stripe_length * data_disks);
@@ -1404,5 +1417,13 @@ end:
     ExFreePool(ctxp);
     ExFreePool(q);
     ExFreePool(p);
+
+end2:
+    while (!IsListEmpty(&ctxs)) {
+        io_context* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
+
+        ctx->~io_context();
+        ExFreePool(ctx);
+    }
 }
 #endif
