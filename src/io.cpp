@@ -391,41 +391,37 @@ void flush_chunks(set_pdo* pdo) {
     ExReleaseResourceLite(&pdo->partial_chunks_lock);
 }
 
-void set_pdo::flush_thread() {
-    LARGE_INTEGER due_time;
-
-    ObReferenceObject(pdo);
-
-    KeInitializeTimer(&flush_thread_timer);
-
-    due_time.QuadPart = flush_interval * -10000000ll;
-
-    KeSetTimer(&flush_thread_timer, due_time, nullptr);
-
-    while (true) {
-        KeWaitForSingleObject(&flush_thread_timer, Executive, KernelMode, false, nullptr);
-
-        if (loaded)
-            flush_chunks(this);
-
-        if (readonly)
-            break;
-
-        KeSetTimer(&flush_thread_timer, due_time, nullptr);
-    }
-
-    ObDereferenceObject(pdo);
-    KeCancelTimer(&flush_thread_timer);
-
-    KeSetEvent(&flush_thread_finished, 0, false);
-
-    PsTerminateSystemThread(STATUS_SUCCESS);
-}
-
 void __stdcall flush_thread(void* context) {
     auto sd = (set_pdo*)context;
 
-    sd->flush_thread();
+    LARGE_INTEGER due_time;
+
+    ObReferenceObject(sd->pdo);
+
+    KeInitializeTimer(&sd->flush_thread_timer);
+
+    due_time.QuadPart = flush_interval * -10000000ll;
+
+    KeSetTimer(&sd->flush_thread_timer, due_time, nullptr);
+
+    while (true) {
+        KeWaitForSingleObject(&sd->flush_thread_timer, Executive, KernelMode, false, nullptr);
+
+        if (sd->loaded)
+            flush_chunks(sd);
+
+        if (sd->readonly)
+            break;
+
+        KeSetTimer(&sd->flush_thread_timer, due_time, nullptr);
+    }
+
+    ObDereferenceObject(sd->pdo);
+    KeCancelTimer(&sd->flush_thread_timer);
+
+    KeSetEvent(&sd->flush_thread_finished, 0, false);
+
+    PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
 NTSTATUS add_partial_chunk(set_pdo* pdo, uint64_t offset, uint32_t length, void* data) {

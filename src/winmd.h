@@ -264,7 +264,6 @@ public:
     NTSTATUS close(PIRP Irp) override;
     NTSTATUS pnp(PIRP Irp, bool* no_complete) override;
     NTSTATUS shutdown(PIRP Irp) override;
-    void flush_thread();
 
     friend set_device;
 
