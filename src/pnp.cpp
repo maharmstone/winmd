@@ -74,7 +74,7 @@ static char16_t hex_digit(uint8_t c) {
     return c - 10 + u'a';
 }
 
-NTSTATUS set_pdo::query_device_ids(PIRP Irp) {
+static NTSTATUS query_device_ids(mdraid_array_info* array_info, PIRP Irp) {
     char16_t name[100];
 
     static const char16_t pref[] = u"WinMD\\";
@@ -83,8 +83,8 @@ NTSTATUS set_pdo::query_device_ids(PIRP Irp) {
 
     char16_t* noff = &name[(sizeof(pref) / sizeof(char16_t)) - 1];
     for (unsigned int i = 0; i < 16; i++) {
-        *noff = hex_digit(array_info.set_uuid[i] >> 4); noff++;
-        *noff = hex_digit(array_info.set_uuid[i] & 0xf); noff++;
+        *noff = hex_digit(array_info->set_uuid[i] >> 4); noff++;
+        *noff = hex_digit(array_info->set_uuid[i] & 0xf); noff++;
 
         if (i == 3 || i == 5 || i == 7 || i == 9) {
             *noff = '-';
@@ -126,7 +126,7 @@ NTSTATUS set_pdo::pnp(PIRP Irp, bool*) {
                     return set_query_hardware_ids(Irp);
 
                 case BusQueryDeviceID:
-                    return query_device_ids(Irp);
+                    return query_device_ids(&array_info, Irp);
 
                 default:
                     return Irp->IoStatus.Status;
