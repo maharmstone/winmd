@@ -224,19 +224,19 @@ NTSTATUS drv_read(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     return Status;
 }
 
-NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
+static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
     NTSTATUS Status;
     LIST_ENTRY ctxs;
 
     TRACE("(%llx)\n", pc->offset);
 
-    uint32_t data_disks = array_info.raid_disks - (array_info.level == RAID_LEVEL_6 ? 2 : 1);
-    uint32_t chunk_size = array_info.chunksize * 512;
-    bool asymmetric = array_info.layout == RAID_LAYOUT_LEFT_ASYMMETRIC || array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC;
+    uint32_t data_disks = pdo->array_info.raid_disks - (pdo->array_info.level == RAID_LEVEL_6 ? 2 : 1);
+    uint32_t chunk_size = pdo->array_info.chunksize * 512;
+    bool asymmetric = pdo->array_info.layout == RAID_LAYOUT_LEFT_ASYMMETRIC || pdo->array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC;
 
     InitializeListHead(&ctxs);
 
-    auto valid = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, sector_align(array_info.chunksize, 32) / 8, ALLOC_TAG);
+    auto valid = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, sector_align(pdo->array_info.chunksize, 32) / 8, ALLOC_TAG);
     if (!valid) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -244,18 +244,18 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
 
     RTL_BITMAP valid_bmp;
 
-    RtlInitializeBitMap(&valid_bmp, (ULONG*)valid, array_info.chunksize);
+    RtlInitializeBitMap(&valid_bmp, (ULONG*)valid, pdo->array_info.chunksize);
 
     // FIXME - what if array_info.chunksize not multiple of 8?
-    RtlCopyMemory(valid, pc->bmp.Buffer, array_info.chunksize / 8);
+    RtlCopyMemory(valid, pc->bmp.Buffer, pdo->array_info.chunksize / 8);
 
     for (uint32_t i = 1; i < data_disks; i++) {
-        do_and(valid, (uint8_t*)pc->bmp.Buffer + (i * array_info.chunksize / 8), array_info.chunksize / 8);
+        do_and(valid, (uint8_t*)pc->bmp.Buffer + (i * pdo->array_info.chunksize / 8), pdo->array_info.chunksize / 8);
     }
 
     {
-        auto parity = get_parity_volume(pc->offset);
-        uint32_t stripe = get_physical_stripe(0, parity);
+        auto parity = pdo->get_parity_volume(pc->offset);
+        uint32_t stripe = pdo->get_physical_stripe(0, parity);
 
         for (uint32_t i = 0; i < data_disks; i++) {
             ULONG index;
@@ -264,8 +264,8 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
 
             while (runlength != 0) {
                 for (uint32_t j = index; j < index + runlength; j++) {
-                    if (RtlCheckBit(&pc->bmp, (i * array_info.chunksize) + j)) {
-                        uint64_t stripe_start = (pc->offset / data_disks) + (j * 512) + (child_list[stripe]->disk_info.data_offset * 512);
+                    if (RtlCheckBit(&pc->bmp, (i * pdo->array_info.chunksize) + j)) {
+                        uint64_t stripe_start = (pc->offset / data_disks) + (j * 512) + (pdo->child_list[stripe]->disk_info.data_offset * 512);
 
                         if (last && last->stripe_end == stripe_start)
                             last->stripe_end += 512;
@@ -276,7 +276,7 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
                                 goto end;
                             }
 
-                            new (last) io_context(child_list[stripe], stripe_start, stripe_start + 512);
+                            new (last) io_context(pdo->child_list[stripe], stripe_start, stripe_start + 512);
 
                             InsertTailList(&ctxs, &last->list_entry);
 
@@ -298,13 +298,13 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
                 stripe++;
 
                 if (stripe == parity) {
-                    if (array_info.level == RAID_LEVEL_6)
+                    if (pdo->array_info.level == RAID_LEVEL_6)
                         stripe += 2;
                     else
                         stripe++;
                 }
             } else
-                stripe = (stripe + 1) % array_info.raid_disks;
+                stripe = (stripe + 1) % pdo->array_info.raid_disks;
         }
 
         if (!IsListEmpty(&ctxs)) {
@@ -359,10 +359,10 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
         }
     }
 
-    if (array_info.level == RAID_LEVEL_6)
-        Status = flush_partial_chunk_raid6(this, pc, &valid_bmp);
+    if (pdo->array_info.level == RAID_LEVEL_6)
+        Status = flush_partial_chunk_raid6(pdo, pc, &valid_bmp);
     else
-        Status = flush_partial_chunk_raid45(this, pc, &valid_bmp);
+        Status = flush_partial_chunk_raid45(pdo, pc, &valid_bmp);
 
 end:
     while (!IsListEmpty(&ctxs)) {
@@ -383,7 +383,7 @@ void set_pdo::flush_chunks() {
     while (!IsListEmpty(&partial_chunks)) {
         auto pc = CONTAINING_RECORD(RemoveHeadList(&partial_chunks), partial_chunk, list_entry);
 
-        flush_partial_chunk(pc);
+        flush_partial_chunk(this, pc);
 
         ExFreePool(pc);
     }
@@ -450,7 +450,7 @@ NTSTATUS add_partial_chunk(set_pdo* pdo, uint64_t offset, uint32_t length, void*
             RtlClearBits(&pc->bmp, (ULONG)((offset - chunk_offset) / 512), length / 512);
 
             if (RtlAreBitsClear(&pc->bmp, 0, pdo->array_info.chunksize * data_disks)) {
-                NTSTATUS Status = pdo->flush_partial_chunk(pc);
+                NTSTATUS Status = flush_partial_chunk(pdo, pc);
                 if (!NT_SUCCESS(Status)) {
                     ERR("flush_partial_chunk returned %08x\n", Status);
                     goto end;

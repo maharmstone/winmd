@@ -294,7 +294,6 @@ public:
     bool readonly = false;
     UNICODE_STRING bus_name;
 
-    NTSTATUS flush_partial_chunk(partial_chunk* pc);
     uint32_t get_parity_volume(uint64_t offset);
     uint32_t get_physical_stripe(uint32_t stripe, uint32_t parity);
 
