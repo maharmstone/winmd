@@ -1102,15 +1102,15 @@ end:
     return Status;
 }
 
-NTSTATUS set_pdo::flush_partial_chunk_raid45(partial_chunk* pc, RTL_BITMAP* valid_bmp) {
+NTSTATUS flush_partial_chunk_raid45(set_pdo* pdo, partial_chunk* pc, RTL_BITMAP* valid_bmp) {
     NTSTATUS Status;
     LIST_ENTRY ctxs;
     ULONG index;
     auto runlength = RtlFindFirstRunClear(valid_bmp, &index);
-    auto parity = get_parity_volume(pc->offset);
-    auto parity_dev = child_list[parity];
-    uint32_t data_disks = array_info.raid_disks - 1;
-    uint32_t chunk_size = array_info.chunksize * 512;
+    auto parity = pdo->get_parity_volume(pc->offset);
+    auto parity_dev = pdo->child_list[parity];
+    uint32_t data_disks = pdo->array_info.raid_disks - 1;
+    uint32_t chunk_size = pdo->array_info.chunksize * 512;
 
     InitializeListHead(&ctxs);
 

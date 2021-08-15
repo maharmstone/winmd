@@ -362,7 +362,7 @@ NTSTATUS set_pdo::flush_partial_chunk(partial_chunk* pc) {
     if (array_info.level == RAID_LEVEL_6)
         Status = flush_partial_chunk_raid6(pc, &valid_bmp);
     else
-        Status = flush_partial_chunk_raid45(pc, &valid_bmp);
+        Status = flush_partial_chunk_raid45(this, pc, &valid_bmp);
 
 end:
     while (!IsListEmpty(&ctxs)) {
