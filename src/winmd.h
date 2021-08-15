@@ -295,9 +295,10 @@ public:
     UNICODE_STRING bus_name;
 
     NTSTATUS flush_partial_chunk(partial_chunk* pc);
+    uint32_t get_parity_volume(uint64_t offset);
+    uint32_t get_physical_stripe(uint32_t stripe, uint32_t parity);
 
 private:
-    NTSTATUS read_raid45(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid6(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid10(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid10_odd(PIRP Irp, bool* no_complete);
@@ -311,8 +312,6 @@ private:
     NTSTATUS flush_partial_chunk_raid45(partial_chunk* pc, RTL_BITMAP* valid_bmp);
     NTSTATUS flush_partial_chunk_raid6(partial_chunk* pc, RTL_BITMAP* valid_bmp);
     void flush_chunks();
-    uint32_t get_parity_volume(uint64_t offset);
-    uint32_t get_physical_stripe(uint32_t stripe, uint32_t parity);
 #ifdef DEBUG_PARANOID
     void paranoid_raid5_check(uint64_t parity_offset, uint32_t parity_length);
     void paranoid_raid6_check(uint64_t parity_offset, uint32_t parity_length);
@@ -351,6 +350,9 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete);
 // raid1.cpp
 NTSTATUS read_raid1(set_pdo* pdo, PIRP Irp, bool* no_complete);
 NTSTATUS write_raid1(set_pdo* pdo, PIRP Irp);
+
+// raid45.cpp
+NTSTATUS read_raid45(set_pdo* pdo, PIRP Irp, bool* no_complete);
 
 // linear.cpp
 NTSTATUS read_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
