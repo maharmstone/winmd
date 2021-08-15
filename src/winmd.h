@@ -115,9 +115,6 @@ public:
     PDEVICE_OBJECT buspdo;
     PDEVICE_OBJECT attached_device;
     UNICODE_STRING bus_name;
-
-private:
-    NTSTATUS query_device_relations(PIRP Irp);
 };
 
 __inline static uint64_t sector_align(uint64_t n, uint64_t a) {

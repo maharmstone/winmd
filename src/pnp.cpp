@@ -177,7 +177,7 @@ static NTSTATUS query_hardware_ids(PIRP Irp) {
     return STATUS_SUCCESS;
 }
 
-NTSTATUS control_device::query_device_relations(PIRP Irp) {
+static NTSTATUS query_device_relations(PIRP Irp) {
     ExAcquireResourceSharedLite(&dev_lock, true);
 
     unsigned int num_children = 0;
