@@ -151,7 +151,7 @@ NTSTATUS device::pnp(PIRP Irp, bool*) {
     return Irp->IoStatus.Status;
 }
 
-NTSTATUS control_device::query_capabilities(PIRP Irp) {
+static NTSTATUS query_capabilities(PIRP Irp) {
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
     auto dc = IrpSp->Parameters.DeviceCapabilities.Capabilities;
 

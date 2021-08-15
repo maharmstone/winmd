@@ -117,7 +117,6 @@ public:
     UNICODE_STRING bus_name;
 
 private:
-    NTSTATUS query_capabilities(PIRP Irp);
     NTSTATUS query_hardware_ids(PIRP Irp);
     NTSTATUS query_device_relations(PIRP Irp);
 };
