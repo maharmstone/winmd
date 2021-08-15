@@ -1322,7 +1322,7 @@ NTSTATUS set_pdo::write_raid10_offset_partial(klist<io_context>& ctxs, uint64_t 
 NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
     NTSTATUS Status;
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    bool mdl_locked = true;
+    bool mdl_locked;
     uint64_t offset = IrpSp->Parameters.Write.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Write.Length;
     uint32_t stripe_length = array_info.chunksize * 512;
@@ -1341,7 +1341,6 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
 
         if (!NT_SUCCESS(Status)) {
             ERR("MmProbeAndLockPages threw exception %08x\n", Status);
-            mdl_locked = true;
             return Status;
         }
     }
@@ -1394,15 +1393,12 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
         uint64_t stripe_start = (offset / full_stripe) * (stripe_length * far);
         uint32_t len = (length / full_stripe) * (stripe_length * far);
 
-        np_buffer mdl_buf(sizeof(PFN_NUMBER*) * array_info.raid_disks);
-
-        if (!mdl_buf.buf) {
+        auto mdlpfns = (PFN_NUMBER**)ExAllocatePoolWithTag(NonPagedPool, sizeof(PFN_NUMBER*) * array_info.raid_disks, ALLOC_TAG);
+        if (!mdlpfns) {
             ERR("out of memory\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
             goto end;
         }
-
-        auto mdlpfns = (PFN_NUMBER**)mdl_buf.buf;
 
         for (uint32_t i = 0; i < array_info.raid_disks; i++) {
             auto c = child_list[i];
@@ -1412,7 +1408,9 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
             ctxa.mdl = IoAllocateMdl(nullptr, len + mdl_offset, false, false, nullptr);
             if (!ctxa.mdl) {
                 ERR("IoAllocateMdl failed\n");
-                return STATUS_INSUFFICIENT_RESOURCES;
+                ExFreePool(mdlpfns);
+                Status = STATUS_INSUFFICIENT_RESOURCES;
+                goto end;
             }
 
             ctxa.mdl->MdlFlags |= MDL_PARTIAL;
@@ -1443,6 +1441,8 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
 
             pos += full_stripe;
         }
+
+        ExFreePool(mdlpfns);
     }
 
     {
