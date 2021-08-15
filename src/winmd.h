@@ -323,7 +323,6 @@ private:
     uint32_t get_parity_volume(uint64_t offset);
     uint32_t get_physical_stripe(uint32_t stripe, uint32_t parity);
     NTSTATUS io_linear2(PIRP Irp, uint64_t offset, uint32_t start_disk, bool write);
-    NTSTATUS query_hardware_ids(PIRP Irp);
     NTSTATUS query_device_ids(PIRP Irp);
 #ifdef DEBUG_PARANOID
     void paranoid_raid5_check(uint64_t parity_offset, uint32_t parity_length);

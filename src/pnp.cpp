@@ -51,7 +51,7 @@ NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     return Status;
 }
 
-NTSTATUS set_pdo::query_hardware_ids(PIRP Irp) {
+static NTSTATUS set_query_hardware_ids(PIRP Irp) {
     static const char16_t ids[] = u"WinMDVolume\0";
 
     auto out = (char16_t*)ExAllocatePoolWithTag(PagedPool, sizeof(ids), ALLOC_TAG);
@@ -123,7 +123,7 @@ NTSTATUS set_pdo::pnp(PIRP Irp, bool*) {
         case IRP_MN_QUERY_ID:
             switch (IrpSp->Parameters.QueryId.IdType) {
                 case BusQueryHardwareIDs:
-                    return query_hardware_ids(Irp);
+                    return set_query_hardware_ids(Irp);
 
                 case BusQueryDeviceID:
                     return query_device_ids(Irp);
