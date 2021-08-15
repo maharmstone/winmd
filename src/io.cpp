@@ -378,7 +378,7 @@ end:
 }
 
 void set_pdo::flush_chunks() {
-    exclusive_eresource l(&partial_chunks_lock);
+    ExAcquireResourceExclusiveLite(&partial_chunks_lock, true);
 
     while (!IsListEmpty(&partial_chunks)) {
         auto pc = CONTAINING_RECORD(RemoveHeadList(&partial_chunks), partial_chunk, list_entry);
@@ -387,6 +387,8 @@ void set_pdo::flush_chunks() {
 
         ExFreePool(pc);
     }
+
+    ExReleaseResourceLite(&partial_chunks_lock);
 }
 
 void set_pdo::flush_thread() {
