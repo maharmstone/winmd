@@ -17,7 +17,7 @@
 
 #include "winmd.h"
 
-NTSTATUS set_pdo::io_linear2(PIRP Irp, uint64_t offset, uint32_t start_disk, bool write) {
+static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t start_disk, bool write) {
     NTSTATUS Status;
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
     uint32_t length = write ? IrpSp->Parameters.Write.Length : IrpSp->Parameters.Read.Length;
@@ -26,8 +26,8 @@ NTSTATUS set_pdo::io_linear2(PIRP Irp, uint64_t offset, uint32_t start_disk, boo
 
     InitializeListHead(&ctxs);
 
-    for (uint32_t i = start_disk; i < array_info.raid_disks; i++) {
-        auto io_length = (uint32_t)min(length, (child_list[i]->disk_info.data_size * 512) - offset);
+    for (uint32_t i = start_disk; i < pdo->array_info.raid_disks; i++) {
+        auto io_length = (uint32_t)min(length, (pdo->child_list[i]->disk_info.data_size * 512) - offset);
 
         auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
         if (!last) {
@@ -35,7 +35,7 @@ NTSTATUS set_pdo::io_linear2(PIRP Irp, uint64_t offset, uint32_t start_disk, boo
             goto fail;
         }
 
-        new (last) io_context(child_list[i], offset + (child_list[i]->disk_info.data_offset * 512), io_length);
+        new (last) io_context(pdo->child_list[i], offset + (pdo->child_list[i]->disk_info.data_offset * 512), io_length);
 
         InsertTailList(&ctxs, &last->list_entry);
 
@@ -58,15 +58,15 @@ NTSTATUS set_pdo::io_linear2(PIRP Irp, uint64_t offset, uint32_t start_disk, boo
 
         auto IrpSp2 = IoGetNextIrpStackLocation(last->Irp);
 
-        IrpSp2->FileObject = child_list[i]->fileobj;
+        IrpSp2->FileObject = pdo->child_list[i]->fileobj;
 
         if (write) {
             IrpSp2->MajorFunction = IRP_MJ_WRITE;
-            IrpSp2->Parameters.Write.ByteOffset.QuadPart = offset + (child_list[i]->disk_info.data_offset * 512);
+            IrpSp2->Parameters.Write.ByteOffset.QuadPart = offset + (pdo->child_list[i]->disk_info.data_offset * 512);
             IrpSp2->Parameters.Write.Length = io_length;
         } else {
             IrpSp2->MajorFunction = IRP_MJ_READ;
-            IrpSp2->Parameters.Read.ByteOffset.QuadPart = offset + (child_list[i]->disk_info.data_offset * 512);
+            IrpSp2->Parameters.Read.ByteOffset.QuadPart = offset + (pdo->child_list[i]->disk_info.data_offset * 512);
             IrpSp2->Parameters.Read.Length = io_length;
         }
 
@@ -141,7 +141,7 @@ NTSTATUS set_pdo::read_linear(PIRP Irp, bool* no_complete) {
 
                 Status = IoCallDriver(c->device, Irp);
             } else
-                Status = io_linear2(Irp, offset, i, false);
+                Status = io_linear2(this, Irp, offset, i, false);
 
             ExReleaseResourceLite(&lock);
 
@@ -180,7 +180,7 @@ NTSTATUS set_pdo::write_linear(PIRP Irp, bool* no_complete) {
 
                 return IoCallDriver(c->device, Irp);
             } else
-                return io_linear2(Irp, offset, i, true);
+                return io_linear2(this, Irp, offset, i, true);
         }
 
         offset -= child_list[i]->disk_info.data_size * 512;
