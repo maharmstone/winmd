@@ -300,7 +300,6 @@ public:
     UNICODE_STRING bus_name;
 
 private:
-    NTSTATUS disk_get_drive_geometry(PIRP Irp, PDEVICE_OBJECT devobj);
     NTSTATUS disk_get_length_info(PIRP Irp);
     NTSTATUS read_raid0(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid1(PIRP Irp, bool* no_complete);
