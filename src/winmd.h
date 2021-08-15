@@ -302,7 +302,6 @@ private:
     NTSTATUS read_raid10(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid10_odd(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid10_offset(PIRP Irp, bool* no_complete);
-    NTSTATUS write_raid6(PIRP Irp, bool* no_complete);
     NTSTATUS write_raid10(PIRP Irp);
     NTSTATUS write_raid10_odd(PIRP Irp);
     NTSTATUS write_raid10_offset(PIRP Irp);
@@ -355,6 +354,7 @@ NTSTATUS flush_partial_chunk_raid45(set_pdo* pdo, partial_chunk* pc, RTL_BITMAP*
 
 // raid6.cpp
 NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete);
+NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete);
 
 // linear.cpp
 NTSTATUS read_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
