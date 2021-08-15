@@ -186,7 +186,7 @@ NTSTATUS set_device::read(PIRP Irp, bool* no_complete) {
             return pdo->read_raid10(Irp, no_complete);
 
         case RAID_LEVEL_LINEAR:
-            return pdo->read_linear(Irp, no_complete);
+            return read_linear(pdo, Irp, no_complete);
 
         default:
             return STATUS_INVALID_DEVICE_REQUEST;

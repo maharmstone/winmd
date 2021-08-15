@@ -113,45 +113,45 @@ fail:
     return Status;
 }
 
-NTSTATUS set_pdo::read_linear(PIRP Irp, bool* no_complete) {
+NTSTATUS read_linear(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
     uint64_t offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Read.Length;
 
-    ExAcquireResourceSharedLite(&lock, true);
+    ExAcquireResourceSharedLite(&pdo->lock, true);
 
-    for (uint32_t i = 0; i < array_info.raid_disks; i++) {
-        if (offset < (child_list[i]->disk_info.data_size * 512)) {
+    for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
+        if (offset < (pdo->child_list[i]->disk_info.data_size * 512)) {
             NTSTATUS Status;
 
-            if (offset + length < (child_list[i]->disk_info.data_size * 512) || i == array_info.raid_disks - 1) {
-                auto c = child_list[i];
+            if (offset + length < (pdo->child_list[i]->disk_info.data_size * 512) || i == pdo->array_info.raid_disks - 1) {
+                auto c = pdo->child_list[i];
 
                 IoCopyCurrentIrpStackLocationToNext(Irp);
 
                 auto IrpSp2 = IoGetNextIrpStackLocation(Irp);
 
-                IrpSp2->FileObject = child_list[i]->fileobj;
+                IrpSp2->FileObject = pdo->child_list[i]->fileobj;
                 IrpSp2->Parameters.Read.ByteOffset.QuadPart = offset + (c->disk_info.data_offset * 512);
 
-                if (i == array_info.raid_disks - 1)
-                    IrpSp2->Parameters.Read.Length = (uint32_t)min(IrpSp2->Parameters.Read.Length, ((child_list[i]->disk_info.data_size * 512) - offset));
+                if (i == pdo->array_info.raid_disks - 1)
+                    IrpSp2->Parameters.Read.Length = (uint32_t)min(IrpSp2->Parameters.Read.Length, ((pdo->child_list[i]->disk_info.data_size * 512) - offset));
 
                 *no_complete = true;
 
                 Status = IoCallDriver(c->device, Irp);
             } else
-                Status = io_linear2(this, Irp, offset, i, false);
+                Status = io_linear2(pdo, Irp, offset, i, false);
 
-            ExReleaseResourceLite(&lock);
+            ExReleaseResourceLite(&pdo->lock);
 
             return Status;
         }
 
-        offset -= child_list[i]->disk_info.data_size * 512;
+        offset -= pdo->child_list[i]->disk_info.data_size * 512;
     }
 
-    ExReleaseResourceLite(&lock);
+    ExReleaseResourceLite(&pdo->lock);
 
     return STATUS_INVALID_PARAMETER;
 }
