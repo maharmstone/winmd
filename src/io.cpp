@@ -92,28 +92,28 @@ static void do_and(uint8_t* buf1, uint8_t* buf2, uint32_t len) {
     }
 }
 
-uint32_t set_pdo::get_parity_volume(uint64_t offset) {
-    switch (array_info.level) {
+uint32_t get_parity_volume(set_pdo* pdo, uint64_t offset) {
+    switch (pdo->array_info.level) {
         case RAID_LEVEL_4:
-            return array_info.raid_disks - 1;
+            return pdo->array_info.raid_disks - 1;
 
         case RAID_LEVEL_5:
-            offset /= (array_info.raid_disks - 1) * array_info.chunksize * 512;
-            offset %= array_info.raid_disks;
+            offset /= (pdo->array_info.raid_disks - 1) * pdo->array_info.chunksize * 512;
+            offset %= pdo->array_info.raid_disks;
 
-            if (array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC || array_info.layout == RAID_LAYOUT_RIGHT_SYMMETRIC)
+            if (pdo->array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC || pdo->array_info.layout == RAID_LAYOUT_RIGHT_SYMMETRIC)
                 return (uint32_t)offset;
             else
-                return array_info.raid_disks - (uint32_t)offset - 1;
+                return pdo->array_info.raid_disks - (uint32_t)offset - 1;
 
         case RAID_LEVEL_6:
-            offset /= (array_info.raid_disks - 2) * array_info.chunksize * 512;
-            offset %= array_info.raid_disks;
+            offset /= (pdo->array_info.raid_disks - 2) * pdo->array_info.chunksize * 512;
+            offset %= pdo->array_info.raid_disks;
 
-            if (array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC || array_info.layout == RAID_LAYOUT_RIGHT_SYMMETRIC)
+            if (pdo->array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC || pdo->array_info.layout == RAID_LAYOUT_RIGHT_SYMMETRIC)
                 return (uint32_t)offset;
             else
-                return array_info.raid_disks - (uint32_t)offset - 1;
+                return pdo->array_info.raid_disks - (uint32_t)offset - 1;
 
         default:
             return 0;
@@ -254,7 +254,7 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
     }
 
     {
-        auto parity = pdo->get_parity_volume(pc->offset);
+        auto parity = get_parity_volume(pdo, pc->offset);
         uint32_t stripe = pdo->get_physical_stripe(0, parity);
 
         for (uint32_t i = 0; i < data_disks; i++) {

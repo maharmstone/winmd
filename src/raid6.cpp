@@ -64,7 +64,7 @@ NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     end_chunk = (offset + length - 1) / stripe_length;
 
     if (start_chunk == end_chunk) { // small reads, on one device
-        auto parity = pdo->get_parity_volume(offset);
+        auto parity = get_parity_volume(pdo, offset);
         uint32_t disk_num = pdo->get_physical_stripe(startoffstripe, parity);
 
         auto c = pdo->child_list[disk_num];
@@ -106,7 +106,7 @@ NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     pos = 0;
     while (pos < length) {
-        auto parity = pdo->get_parity_volume(offset + pos);
+        auto parity = get_parity_volume(pdo, offset + pos);
 
         if (pos == 0) {
             uint32_t stripe = pdo->get_physical_stripe(startoffstripe, parity);
@@ -303,7 +303,7 @@ NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
         auto src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
 
         while (pos < length) {
-            auto parity = pdo->get_parity_volume(offset + pos);
+            auto parity = get_parity_volume(pdo, offset + pos);
 
             if (pos == 0) {
                 uint32_t stripe = pdo->get_physical_stripe(startoffstripe, parity);
@@ -603,7 +603,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     end_chunk = (offset + length - 1) / stripe_length;
 
     if (start_chunk == end_chunk) { // small write, on one device
-        auto parity = pdo->get_parity_volume(offset);
+        auto parity = get_parity_volume(pdo, offset);
         uint32_t disk_num = pdo->get_physical_stripe(startoffstripe, parity);
 
         auto c = pdo->child_list[disk_num];
@@ -626,7 +626,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     }
 
     if (skip_first != 0) {
-        auto parity = pdo->get_parity_volume(offset);
+        auto parity = get_parity_volume(pdo, offset);
         uint32_t disk_num = pdo->get_physical_stripe(startoffstripe, parity);
         first_bit.sc = pdo->child_list[disk_num];
         first_bit.Irp = IoAllocateIrp(first_bit.sc->device->StackSize, false);
@@ -686,7 +686,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     pos = 0;
     while (pos < length) {
-        auto parity = pdo->get_parity_volume(offset + pos);
+        auto parity = get_parity_volume(pdo, offset + pos);
 
         if (pos == 0) {
             uint32_t stripe = pdo->get_physical_stripe(startoffstripe, parity);
@@ -901,7 +901,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
         auto src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
 
         while (pos < length) {
-            auto parity = pdo->get_parity_volume(offset + pos);
+            auto parity = get_parity_volume(pdo, offset + pos);
 
             if (pos == 0 && offset != parity_offset) {
                 uint32_t stripe = pdo->get_physical_stripe(startoffstripe, parity);
@@ -1109,7 +1109,7 @@ NTSTATUS flush_partial_chunk_raid6(set_pdo* pdo, partial_chunk* pc, RTL_BITMAP* 
     LIST_ENTRY ctxs;
     ULONG index;
     auto runlength = RtlFindFirstRunClear(valid_bmp, &index);
-    auto parity = pdo->get_parity_volume(pc->offset);
+    auto parity = get_parity_volume(pdo, pc->offset);
     auto parity_dev = pdo->child_list[parity];
     auto q_num = (parity + 1) % pdo->array_info.raid_disks;
     auto q_dev = pdo->child_list[q_num];
@@ -1391,7 +1391,7 @@ static void paranoid_raid6_check(set_pdo* pdo, uint64_t parity_offset, uint32_t 
 
     for (uint32_t i = 0; i < chunks; i++) {
         uint64_t offset = parity_offset + (i * stripe_length * data_disks);
-        auto parity = pdo->get_parity_volume(offset);
+        auto parity = get_parity_volume(pdo, offset);
         uint32_t q_num = (parity + 1) % pdo->array_info.raid_disks;
 
         uint32_t disk_num = (q_num + data_disks) % pdo->array_info.raid_disks;
