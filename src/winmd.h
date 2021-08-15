@@ -296,7 +296,6 @@ public:
 
 private:
     NTSTATUS write_raid10(PIRP Irp);
-    NTSTATUS write_raid10_odd(PIRP Irp);
     NTSTATUS write_raid10_offset(PIRP Irp);
     NTSTATUS write_raid10_offset_partial(LIST_ENTRY* ctxs, uint64_t offset, uint32_t length, PFN_NUMBER* src_pfns, uint32_t mdl_offset);
 };
