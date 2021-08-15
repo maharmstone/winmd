@@ -305,7 +305,6 @@ private:
     NTSTATUS write_raid10_odd(PIRP Irp);
     NTSTATUS write_raid10_offset(PIRP Irp);
     NTSTATUS write_raid10_offset_partial(LIST_ENTRY* ctxs, uint64_t offset, uint32_t length, PFN_NUMBER* src_pfns, uint32_t mdl_offset);
-    void flush_chunks();
 #ifdef DEBUG_PARANOID
     void paranoid_raid5_check(uint64_t parity_offset, uint32_t parity_length);
     void paranoid_raid6_check(uint64_t parity_offset, uint32_t parity_length);
@@ -332,6 +331,7 @@ void __stdcall flush_thread(void* context);
 NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx);
 void do_xor(uint8_t* buf1, uint8_t* buf2, uint32_t len);
 NTSTATUS add_partial_chunk(set_pdo* pdo, uint64_t offset, uint32_t length, void* data);
+void flush_chunks(set_pdo* pdo);
 
 // pnp.cpp
 NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp);

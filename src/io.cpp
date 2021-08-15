@@ -377,18 +377,18 @@ end:
     return Status;
 }
 
-void set_pdo::flush_chunks() {
-    ExAcquireResourceExclusiveLite(&partial_chunks_lock, true);
+void flush_chunks(set_pdo* pdo) {
+    ExAcquireResourceExclusiveLite(&pdo->partial_chunks_lock, true);
 
-    while (!IsListEmpty(&partial_chunks)) {
-        auto pc = CONTAINING_RECORD(RemoveHeadList(&partial_chunks), partial_chunk, list_entry);
+    while (!IsListEmpty(&pdo->partial_chunks)) {
+        auto pc = CONTAINING_RECORD(RemoveHeadList(&pdo->partial_chunks), partial_chunk, list_entry);
 
-        flush_partial_chunk(this, pc);
+        flush_partial_chunk(pdo, pc);
 
         ExFreePool(pc);
     }
 
-    ExReleaseResourceLite(&partial_chunks_lock);
+    ExReleaseResourceLite(&pdo->partial_chunks_lock);
 }
 
 void set_pdo::flush_thread() {
@@ -406,7 +406,7 @@ void set_pdo::flush_thread() {
         KeWaitForSingleObject(&flush_thread_timer, Executive, KernelMode, false, nullptr);
 
         if (loaded)
-            flush_chunks();
+            flush_chunks(this);
 
         if (readonly)
             break;

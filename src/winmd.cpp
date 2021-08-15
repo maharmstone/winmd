@@ -996,7 +996,7 @@ NTSTATUS set_pdo::shutdown(PIRP Irp) {
         flush_thread_handle = nullptr;
 
         if (loaded)
-            flush_chunks();
+            flush_chunks(this);
     }
 
     // FIXME - mark superblocks as clean(?)
