@@ -18,7 +18,9 @@
 #include "winmd.h"
 
 NTSTATUS set_pdo::read_raid1(PIRP Irp, bool* no_complete) {
-    shared_eresource l(&lock);
+    NTSTATUS Status;
+
+    ExAcquireResourceSharedLite(&lock, true);
 
     read_device++;
 
@@ -33,7 +35,11 @@ NTSTATUS set_pdo::read_raid1(PIRP Irp, bool* no_complete) {
 
     *no_complete = true;
 
-    return IoCallDriver(c->device, Irp);
+    Status = IoCallDriver(c->device, Irp);
+
+    ExReleaseResourceLite(&lock);
+
+    return Status;
 }
 
 NTSTATUS set_pdo::write_raid1(PIRP Irp) {
