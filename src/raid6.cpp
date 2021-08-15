@@ -17,6 +17,10 @@
 
 #include "winmd.h"
 
+#ifdef DEBUG_PARANOID
+static void paranoid_raid6_check(set_pdo* pdo, uint64_t parity_offset, uint32_t parity_length);
+#endif
+
 NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     NTSTATUS Status;
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -1057,7 +1061,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
 #ifdef DEBUG_PARANOID
     if (parity_length != 0)
-        paranoid_raid6_check(parity_offset, parity_length);
+        paranoid_raid6_check(pdo, parity_offset, parity_length);
 #endif
 
 end:
@@ -1247,7 +1251,7 @@ NTSTATUS flush_partial_chunk_raid6(set_pdo* pdo, partial_chunk* pc, RTL_BITMAP* 
     }
 
 #ifdef DEBUG_PARANOID
-    paranoid_raid6_check(pc->offset, chunk_size * data_disks);
+    paranoid_raid6_check(pdo, pc->offset, chunk_size * data_disks);
 #endif
 
     Status = STATUS_SUCCESS;
@@ -1266,8 +1270,8 @@ end:
 }
 
 #ifdef DEBUG_PARANOID
-void set_pdo::paranoid_raid6_check(uint64_t parity_offset, uint32_t parity_length) {
-    uint32_t data_disks = array_info.raid_disks - 2;
+static void paranoid_raid6_check(set_pdo* pdo, uint64_t parity_offset, uint32_t parity_length) {
+    uint32_t data_disks = pdo->array_info.raid_disks - 2;
     uint64_t read_offset = parity_offset / data_disks;
     LIST_ENTRY ctxs;
     uint32_t stripe_length, chunks;
@@ -1280,14 +1284,14 @@ void set_pdo::paranoid_raid6_check(uint64_t parity_offset, uint32_t parity_lengt
 
     InitializeListHead(&ctxs);
 
-    for (uint32_t i = 0; i < array_info.raid_disks; i++) {
+    for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
         auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
         if (!last) {
             ERR("out of memory\n");
             goto end2;
         }
 
-        new (last) io_context(child_list[i], read_offset + (child_list[i]->disk_info.data_offset * 512), parity_length);
+        new (last) io_context(pdo->child_list[i], read_offset + (pdo->child_list[i]->disk_info.data_offset * 512), parity_length);
 
         InsertTailList(&ctxs, &last->list_entry);
 
@@ -1344,7 +1348,7 @@ void set_pdo::paranoid_raid6_check(uint64_t parity_offset, uint32_t parity_lengt
         le = le->Flink;
     }
 
-    stripe_length = array_info.chunksize * 512;
+    stripe_length = pdo->array_info.chunksize * 512;
 
     p = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
     if (!p) {
@@ -1359,7 +1363,7 @@ void set_pdo::paranoid_raid6_check(uint64_t parity_offset, uint32_t parity_lengt
         return;
     }
 
-    ctxp = (io_context**)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context*) * array_info.raid_disks,
+    ctxp = (io_context**)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context*) * pdo->array_info.raid_disks,
                                                ALLOC_TAG);
 
     if (!ctxp) {
@@ -1387,10 +1391,10 @@ void set_pdo::paranoid_raid6_check(uint64_t parity_offset, uint32_t parity_lengt
 
     for (uint32_t i = 0; i < chunks; i++) {
         uint64_t offset = parity_offset + (i * stripe_length * data_disks);
-        auto parity = get_parity_volume(offset);
-        uint32_t q_num = (parity + 1) % array_info.raid_disks;
+        auto parity = pdo->get_parity_volume(offset);
+        uint32_t q_num = (parity + 1) % pdo->array_info.raid_disks;
 
-        uint32_t disk_num = (q_num + data_disks) % array_info.raid_disks;
+        uint32_t disk_num = (q_num + data_disks) % pdo->array_info.raid_disks;
 
         for (uint32_t j = 0; j < data_disks; j++) {
             if (j == 0) {
@@ -1403,7 +1407,7 @@ void set_pdo::paranoid_raid6_check(uint64_t parity_offset, uint32_t parity_lengt
                 do_xor(q, (uint8_t*)ctxp[disk_num]->va + (i * stripe_length), stripe_length);
             }
 
-            disk_num = (disk_num + array_info.raid_disks - 1) % array_info.raid_disks;
+            disk_num = (disk_num + pdo->array_info.raid_disks - 1) % pdo->array_info.raid_disks;
         }
 
         do_xor(p, (uint8_t*)ctxp[parity]->va + (i * stripe_length), stripe_length);
