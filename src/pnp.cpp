@@ -317,15 +317,15 @@ NTSTATUS set_device::pnp(PIRP Irp, bool* no_complete) {
     return IoCallDriver(attached_device, Irp);
 }
 
-NTSTATUS set_pdo::AddDevice() {
+static NTSTATUS add_set_device(set_pdo* pdo) {
     NTSTATUS Status;
     UNICODE_STRING volname;
     PDEVICE_OBJECT voldev;
     set_device* sd;
 
-    ExAcquireResourceExclusiveLite(&lock, true);
+    ExAcquireResourceExclusiveLite(&pdo->lock, true);
 
-    if (dev) {
+    if (pdo->dev) {
         ERR("AddDevice called for already-created device\n");
         Status = STATUS_INTERNAL_ERROR;
         goto end;
@@ -346,8 +346,8 @@ NTSTATUS set_pdo::AddDevice() {
         auto p = &volname.Buffer[(sizeof(device_prefix) / sizeof(char16_t)) - 1];
 
         for (uint8_t i = 0; i < 16; i++) {
-            *p = hex_digit((array_info.set_uuid[i] & 0xf0) >> 4); p++;
-            *p = hex_digit(array_info.set_uuid[i] & 0xf); p++;
+            *p = hex_digit((pdo->array_info.set_uuid[i] & 0xf0) >> 4); p++;
+            *p = hex_digit(pdo->array_info.set_uuid[i] & 0xf); p++;
 
             if (i == 3 || i == 5 || i == 7 || i == 9) {
                 *p = u'-'; p++;
@@ -369,31 +369,31 @@ NTSTATUS set_pdo::AddDevice() {
 
     voldev->Flags |= DO_DIRECT_IO;
 
-    new (voldev->DeviceExtension) set_device(this, voldev);
+    new (voldev->DeviceExtension) set_device(pdo, voldev);
 
     sd = (set_device*)voldev->DeviceExtension;
 
-    Status = IoRegisterDeviceInterface(pdo, &GUID_DEVINTERFACE_VOLUME, nullptr, &bus_name);
+    Status = IoRegisterDeviceInterface(pdo->pdo, &GUID_DEVINTERFACE_VOLUME, nullptr, &pdo->bus_name);
     if (!NT_SUCCESS(Status))
         WARN("IoRegisterDeviceInterface returned %08x\n", Status);
 
-    sd->attached_device = IoAttachDeviceToDeviceStack(voldev, pdo);
+    sd->attached_device = IoAttachDeviceToDeviceStack(voldev, pdo->pdo);
 
-    voldev->StackSize = stack_size;
-    voldev->SectorSize = dev_sector_size;
+    voldev->StackSize = pdo->stack_size;
+    voldev->SectorSize = pdo->dev_sector_size;
 
-    dev = sd;
+    pdo->dev = sd;
 
     voldev->Flags &= ~DO_DEVICE_INITIALIZING;
 
-    Status = IoSetDeviceInterfaceState(&bus_name, true);
+    Status = IoSetDeviceInterfaceState(&pdo->bus_name, true);
     if (!NT_SUCCESS(Status))
         WARN("IoSetDeviceInterfaceState returned %08x\n", Status);
 
     Status = STATUS_SUCCESS;
 
 end:
-    ExReleaseResourceLite(&lock);
+    ExReleaseResourceLite(&pdo->lock);
 
     return Status;
 }
@@ -425,5 +425,5 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
         return STATUS_NOT_SUPPORTED;
     }
 
-    return sd->AddDevice();
+    return add_set_device(sd);
 }

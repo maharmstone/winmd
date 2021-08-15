@@ -266,7 +266,6 @@ public:
     NTSTATUS shutdown(PIRP Irp) override;
     void flush_thread();
     void child_removed(set_child* sc);
-    NTSTATUS AddDevice();
 
     friend set_device;
 
