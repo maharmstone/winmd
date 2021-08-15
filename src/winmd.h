@@ -215,59 +215,6 @@ struct mdraid_superblock {
 
 #pragma pack(pop)
 
-template<class T>
-class klist_entry {
-public:
-    T t;
-    LIST_ENTRY list_entry;
-};
-
-template<class T>
-class klist {
-public:
-    klist() {
-        InitializeListHead(&list);
-    }
-
-    ~klist() {
-        while (!IsListEmpty(&list)) {
-            auto t = CONTAINING_RECORD(RemoveHeadList(&list), klist_entry<T>, list_entry);
-
-            t->t.T::~T();
-
-            ExFreePool(t);
-        }
-    }
-
-    template<typename... Args>
-    NTSTATUS emplace_back_np(Args... args) {
-        auto buf = (klist_entry<T>*)ExAllocatePoolWithTag(NonPagedPool, sizeof(klist_entry<T>), ALLOC_TAG);
-        if (!buf)
-            return STATUS_INSUFFICIENT_RESOURCES;
-
-        new (&buf->t) T(args...);
-
-        InsertTailList(&list, &buf->list_entry);
-
-        return STATUS_SUCCESS;
-    }
-
-    bool empty() const {
-        return IsListEmpty(&list);
-    }
-
-    T& entry(LIST_ENTRY* le) {
-        return CONTAINING_RECORD(le, klist_entry<T>, list_entry)->t;
-    }
-
-    T& back() {
-        return entry(list.Blink);
-    }
-
-    LIST_ENTRY list;
-    NTSTATUS Status = STATUS_SUCCESS;
-};
-
 class set_child {
 public:
     set_child(PDEVICE_OBJECT device, PFILE_OBJECT fileobj, PUNICODE_STRING devpath, mdraid_disk_info* disk_info);
