@@ -302,7 +302,6 @@ private:
     NTSTATUS read_raid10_odd(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid10_offset(PIRP Irp, bool* no_complete);
     NTSTATUS read_linear(PIRP Irp, bool* no_complete);
-    NTSTATUS write_raid0(PIRP Irp, bool* no_complete);
     NTSTATUS write_raid1(PIRP Irp);
     NTSTATUS write_raid45(PIRP Irp, bool* no_complete);
     NTSTATUS write_raid6(PIRP Irp, bool* no_complete);
@@ -351,6 +350,7 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
 
 // raid0.cpp
 NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete);
+NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete);
 
 class io_context {
 public:
