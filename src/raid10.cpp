@@ -972,6 +972,7 @@ NTSTATUS set_pdo::write_raid10_odd(PIRP Irp) {
     uint8_t* tmpbuf = nullptr;
     PMDL tmpmdl = nullptr;
     NTSTATUS Status;
+    LIST_ENTRY first_bits;
 
     uint32_t skip_first = offset % PAGE_SIZE ? (PAGE_SIZE - (offset % PAGE_SIZE)) : 0;
 
@@ -983,7 +984,7 @@ NTSTATUS set_pdo::write_raid10_odd(PIRP Irp) {
 
     RtlZeroMemory(ctxs, sizeof(io_context) * array_info.raid_disks);
 
-    klist<io_context> first_bits;
+    InitializeListHead(&first_bits);
 
     mdl_locked = Irp->MdlAddress->MdlFlags & (MDL_PAGES_LOCKED | MDL_PARTIAL);
 
@@ -1011,36 +1012,42 @@ NTSTATUS set_pdo::write_raid10_odd(PIRP Irp) {
         for (uint32_t i = 0; i < near; i++) {
             uint32_t disk_num = (chunk + i) % array_info.raid_disks;
 
-            first_bits.emplace_back_np(child_list[disk_num], 0, 0);
-
-            auto& last = first_bits.back();
-
-            if (!NT_SUCCESS(last.Status)) {
-                ERR("io_context constructor returned %08x\n", last.Status);
-                Status = last.Status;
+            auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
+            if (!last) {
+                Status = STATUS_INSUFFICIENT_RESOURCES;
                 goto end;
             }
 
-            auto IrpSp2 = IoGetNextIrpStackLocation(last.Irp);
+            new (last) io_context(child_list[disk_num], 0, 0);
+
+            InsertTailList(&first_bits, &last->list_entry);
+
+            if (!NT_SUCCESS(last->Status)) {
+                ERR("io_context constructor returned %08x\n", last->Status);
+                Status = last->Status;
+                goto end;
+            }
+
+            auto IrpSp2 = IoGetNextIrpStackLocation(last->Irp);
             IrpSp2->MajorFunction = IRP_MJ_WRITE;
 
-            last.mdl = IoAllocateMdl(addr, skip_first, false, false, nullptr);
-            if (!last.mdl) {
+            last->mdl = IoAllocateMdl(addr, skip_first, false, false, nullptr);
+            if (!last->mdl) {
                 ERR("IoAllocateMdl failed\n");
                 Status = STATUS_INSUFFICIENT_RESOURCES;
                 goto end;
             }
 
-            IoBuildPartialMdl(Irp->MdlAddress, last.mdl, addr, skip_first);
+            IoBuildPartialMdl(Irp->MdlAddress, last->mdl, addr, skip_first);
 
-            last.Irp->MdlAddress = last.mdl;
+            last->Irp->MdlAddress = last->mdl;
 
             uint64_t start = ((chunk + i) / array_info.raid_disks) * stripe_length;
 
             start += offset % stripe_length;
-            start += last.sc->disk_info.data_offset * 512;
+            start += last->sc->disk_info.data_offset * 512;
 
-            IrpSp2->FileObject = last.sc->fileobj;
+            IrpSp2->FileObject = last->sc->fileobj;
             IrpSp2->Parameters.Write.Length = skip_first;
             IrpSp2->Parameters.Write.ByteOffset.QuadPart = start;
         }
@@ -1194,14 +1201,14 @@ NTSTATUS set_pdo::write_raid10_odd(PIRP Irp) {
     }
 
     if (skip_first != 0) {
-        LIST_ENTRY* le = first_bits.list.Flink;
+        LIST_ENTRY* le = first_bits.Flink;
 
-        while (le != &first_bits.list) {
-            auto& fb = first_bits.entry(le);
+        while (le != &first_bits) {
+            auto fb = CONTAINING_RECORD(le, io_context, list_entry);
 
-            fb.Status = IoCallDriver(fb.sc->device, fb.Irp);
-            if (!NT_SUCCESS(fb.Status))
-                ERR("IoCallDriver returned %08x\n", fb.Status);
+            fb->Status = IoCallDriver(fb->sc->device, fb->Irp);
+            if (!NT_SUCCESS(fb->Status))
+                ERR("IoCallDriver returned %08x\n", fb->Status);
 
             le = le->Flink;
         }
@@ -1220,20 +1227,19 @@ NTSTATUS set_pdo::write_raid10_odd(PIRP Irp) {
     }
 
     if (skip_first != 0) {
-        LIST_ENTRY* le = first_bits.list.Flink;
+        while (!IsListEmpty(&first_bits)) {
+            auto fb = CONTAINING_RECORD(RemoveHeadList(&first_bits), io_context, list_entry);
 
-        while (le != &first_bits.list) {
-            auto& fb = first_bits.entry(le);
-
-            if (fb.Status == STATUS_PENDING) {
-                KeWaitForSingleObject(&fb.Event, Executive, KernelMode, false, nullptr);
-                fb.Status = fb.iosb.Status;
+            if (fb->Status == STATUS_PENDING) {
+                KeWaitForSingleObject(&fb->Event, Executive, KernelMode, false, nullptr);
+                fb->Status = fb->iosb.Status;
             }
 
-            if (!NT_SUCCESS(fb.Status))
-                Status = fb.Status;
+            if (!NT_SUCCESS(fb->Status))
+                Status = fb->Status;
 
-            le = le->Flink;
+            fb->~io_context();
+            ExFreePool(fb);
         }
     }
 
@@ -1256,6 +1262,13 @@ end:
 
     if (tmpbuf)
         ExFreePool(tmpbuf);
+
+    while (!IsListEmpty(&first_bits)) {
+        io_context* ctx = CONTAINING_RECORD(RemoveHeadList(&first_bits), io_context, list_entry);
+
+        ctx->~io_context();
+        ExFreePool(ctx);
+    }
 
     return Status;
 }
