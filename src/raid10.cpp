@@ -1292,15 +1292,16 @@ end:
     return Status;
 }
 
-NTSTATUS set_pdo::write_raid10_offset_partial(LIST_ENTRY* ctxs, uint64_t offset, uint32_t length, PFN_NUMBER* src_pfns, uint32_t mdl_offset) {
-    uint8_t far = (array_info.layout >> 8) & 0xff;
+static NTSTATUS write_raid10_offset_partial(set_pdo* pdo, LIST_ENTRY* ctxs, uint64_t offset, uint32_t length,
+                                            PFN_NUMBER* src_pfns, uint32_t mdl_offset) {
+    uint8_t far = (pdo->array_info.layout >> 8) & 0xff;
     uint64_t startoff, endoff;
     uint32_t startoffstripe, endoffstripe;
 
-    uint32_t stripe_length = array_info.chunksize * 512;
+    uint32_t stripe_length = pdo->array_info.chunksize * 512;
 
-    get_raid0_offset(offset, stripe_length, array_info.raid_disks, &startoff, &startoffstripe);
-    get_raid0_offset(offset + length - 1, stripe_length, array_info.raid_disks, &endoff, &endoffstripe);
+    get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks, &startoff, &startoffstripe);
+    get_raid0_offset(offset + length - 1, stripe_length, pdo->array_info.raid_disks, &endoff, &endoffstripe);
 
     uint32_t pos = 0;
     PFN_NUMBER* pfns = src_pfns;
@@ -1309,7 +1310,7 @@ NTSTATUS set_pdo::write_raid10_offset_partial(LIST_ENTRY* ctxs, uint64_t offset,
         uint64_t stripe_start = ((startoff - (startoff % stripe_length)) * far) + (i == startoffstripe ? (startoff % stripe_length) : 0);
         uint32_t len = min(length - pos, i == startoffstripe ? (stripe_length - (startoff % stripe_length)) : stripe_length);
 
-        auto c = child_list[i];
+        auto c = pdo->child_list[i];
 
         auto ctxa = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
         if (!ctxa) {
@@ -1344,7 +1345,7 @@ NTSTATUS set_pdo::write_raid10_offset_partial(LIST_ENTRY* ctxs, uint64_t offset,
         pfns = &pfns[len / PAGE_SIZE];
 
         for (uint32_t k = 1; k < far; k++) {
-            auto c = child_list[(i + 1) % array_info.raid_disks];
+            auto c = pdo->child_list[(i + 1) % pdo->array_info.raid_disks];
 
             auto ctxb = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
             if (!ctxb) {
@@ -1401,7 +1402,7 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
     if (offset % full_stripe != 0) {
         uint32_t partial_len = min(length, full_stripe - (offset % full_stripe));
 
-        Status = write_raid10_offset_partial(&ctxs, offset, partial_len, src_pfns, mdl_offset);
+        Status = write_raid10_offset_partial(this, &ctxs, offset, partial_len, src_pfns, mdl_offset);
         if (!NT_SUCCESS(Status)) {
             ERR("write_raid10_offset_partial returned %08x\n", Status);
             goto end;
@@ -1427,7 +1428,7 @@ NTSTATUS set_pdo::write_raid10_offset(PIRP Irp) {
     if (length % full_stripe != 0) {
         uint32_t partial_len = length % full_stripe;
 
-        Status = write_raid10_offset_partial(&ctxs, offset + length - partial_len, partial_len, &src_pfns[(length - partial_len) / PAGE_SIZE], mdl_offset);
+        Status = write_raid10_offset_partial(this, &ctxs, offset + length - partial_len, partial_len, &src_pfns[(length - partial_len) / PAGE_SIZE], mdl_offset);
         if (!NT_SUCCESS(Status)) {
             ERR("write_raid10_offset_partial returned %08x\n", Status);
             goto end;
