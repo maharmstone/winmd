@@ -311,22 +311,22 @@ end:
     return Status;
 }
 
-NTSTATUS set_pdo::read_raid10_offset(PIRP Irp, bool* no_complete) {
+static NTSTATUS read_raid10_offset(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
     bool mdl_locked = true;
-    uint8_t far = (array_info.layout >> 8) & 0xff;
+    uint8_t far = (pdo->array_info.layout >> 8) & 0xff;
     uint64_t offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Read.Length;
-    uint32_t stripe_length = array_info.chunksize * 512;
+    uint32_t stripe_length = pdo->array_info.chunksize * 512;
     uint64_t start_chunk = offset / stripe_length;
     uint64_t end_chunk = (offset + length - 1) / stripe_length;
     void* dummypage = nullptr;
     PMDL dummy_mdl = nullptr;
-    uint8_t far_offset = read_device % far;
+    uint8_t far_offset = pdo->read_device % far;
 
     if (start_chunk == end_chunk) { // small reads, on one device
-        uint64_t start = (((start_chunk / array_info.raid_disks) * far) + far_offset) * stripe_length;
-        auto c = child_list[(start_chunk + far_offset) % array_info.raid_disks];
+        uint64_t start = (((start_chunk / pdo->array_info.raid_disks) * far) + far_offset) * stripe_length;
+        auto c = pdo->child_list[(start_chunk + far_offset) % pdo->array_info.raid_disks];
 
         IoCopyCurrentIrpStackLocationToNext(Irp);
 
@@ -353,23 +353,23 @@ NTSTATUS set_pdo::read_raid10_offset(PIRP Irp, bool* no_complete) {
     uint8_t* tmpbuf = nullptr;
     PMDL tmpmdl = nullptr;
 
-    get_raid0_offset(offset, stripe_length, array_info.raid_disks, &startoff, &startoffstripe);
-    get_raid0_offset(offset + length - 1, stripe_length, array_info.raid_disks, &endoff, &endoffstripe);
+    get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks, &startoff, &startoffstripe);
+    get_raid0_offset(offset + length - 1, stripe_length, pdo->array_info.raid_disks, &endoff, &endoffstripe);
 
-    auto ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * array_info.raid_disks, ALLOC_TAG);
+    auto ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlZeroMemory(ctxs, sizeof(io_context) * array_info.raid_disks);
+    RtlZeroMemory(ctxs, sizeof(io_context) * pdo->array_info.raid_disks);
 
     bool need_dummy = false;
 
     uint32_t pos = 0;
     while (pos < length) {
         if (pos == 0) {
-            for (uint32_t i = startoffstripe; i < array_info.raid_disks; i++) {
+            for (uint32_t i = startoffstripe; i < pdo->array_info.raid_disks; i++) {
                 uint32_t readlen;
 
                 if (i == startoffstripe) {
@@ -397,25 +397,25 @@ NTSTATUS set_pdo::read_raid10_offset(PIRP Irp, bool* no_complete) {
                 ctxs[i].stripe_start = ctxs[i].stripe_end = far * ((startoff - (startoff % stripe_length)) + stripe_length);
             }
 
-            if (length - pos > array_info.raid_disks * stripe_length) {
-                auto skip = (uint32_t)(((length - pos) / (array_info.raid_disks * stripe_length)) - 1);
+            if (length - pos > pdo->array_info.raid_disks * stripe_length) {
+                auto skip = (uint32_t)(((length - pos) / (pdo->array_info.raid_disks * stripe_length)) - 1);
 
-                for (uint32_t i = 0; i < array_info.raid_disks; i++) {
+                for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
                     ctxs[i].stripe_end += skip * far * stripe_length;
                 }
 
-                pos += (uint32_t)(skip * array_info.raid_disks * stripe_length);
+                pos += (uint32_t)(skip * pdo->array_info.raid_disks * stripe_length);
                 need_dummy = true;
             }
-        } else if (length - pos >= stripe_length * array_info.raid_disks) {
-            for (uint32_t i = 0; i < array_info.raid_disks; i++) {
+        } else if (length - pos >= stripe_length * pdo->array_info.raid_disks) {
+            for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
                 ctxs[i].stripe_end += far * stripe_length;
             }
 
-            pos += (uint32_t)(stripe_length * array_info.raid_disks);
+            pos += (uint32_t)(stripe_length * pdo->array_info.raid_disks);
             need_dummy = true;
         } else {
-            for (uint32_t i = 0; i < array_info.raid_disks; i++) {
+            for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
                 if (endoffstripe == i) {
                     ctxs[i].stripe_end = ((endoff - (endoff % stripe_length)) * far) + (endoff % stripe_length) + 1;
                     break;
@@ -429,9 +429,9 @@ NTSTATUS set_pdo::read_raid10_offset(PIRP Irp, bool* no_complete) {
 
     NTSTATUS Status;
 
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].stripe_end != ctxs[i].stripe_start) {
-            auto c = child_list[(i + far_offset) % array_info.raid_disks];
+            auto c = pdo->child_list[(i + far_offset) % pdo->array_info.raid_disks];
 
             ctxs[i].Irp = IoAllocateIrp(c->device->StackSize, false);
 
@@ -536,7 +536,7 @@ NTSTATUS set_pdo::read_raid10_offset(PIRP Irp, bool* no_complete) {
 
         MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 
-        for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+        for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
             if (ctxs[i].mdl)
                 ctxs[i].pfnp = ctxs[i].pfns = MmGetMdlPfnArray(ctxs[i].mdl);
         }
@@ -545,7 +545,7 @@ NTSTATUS set_pdo::read_raid10_offset(PIRP Irp, bool* no_complete) {
 
         while (pos < length) {
             if (pos == 0) {
-                for (uint32_t i = startoffstripe; i < array_info.raid_disks; i++) {
+                for (uint32_t i = startoffstripe; i < pdo->array_info.raid_disks; i++) {
                     uint32_t len, pages;
 
                     if (pos == 0) {
@@ -579,10 +579,10 @@ NTSTATUS set_pdo::read_raid10_offset(PIRP Irp, bool* no_complete) {
                 }
 
                 // FIXME
-            } else if (length - pos >= stripe_length * array_info.raid_disks) {
+            } else if (length - pos >= stripe_length * pdo->array_info.raid_disks) {
                 uint32_t pages = stripe_length / PAGE_SIZE;
 
-                for (uint32_t i = 0; i < array_info.raid_disks; i++) {
+                for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
                     if (ctxs[i].pfnp != ctxs[i].pfns) {
                         for (uint32_t k = 0; k < stripe_length / PAGE_SIZE; k++) {
                             RtlCopyMemory(ctxs[i].pfnp, &dummy, sizeof(PFN_NUMBER));
@@ -597,7 +597,7 @@ NTSTATUS set_pdo::read_raid10_offset(PIRP Irp, bool* no_complete) {
                     pos += stripe_length;
                 }
             } else {
-                for (uint32_t i = 0; i < array_info.raid_disks; i++) {
+                for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
                     uint32_t readlen, pages;
 
                     if (length - pos < stripe_length) {
@@ -631,7 +631,7 @@ NTSTATUS set_pdo::read_raid10_offset(PIRP Irp, bool* no_complete) {
         }
     }
 
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].Irp) {
             ctxs[i].Status = IoCallDriver(ctxs[i].sc->device, ctxs[i].Irp);
             if (!NT_SUCCESS(ctxs[i].Status))
@@ -641,7 +641,7 @@ NTSTATUS set_pdo::read_raid10_offset(PIRP Irp, bool* no_complete) {
 
     Status = STATUS_SUCCESS;
 
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].Status == STATUS_PENDING) {
             KeWaitForSingleObject(&ctxs[i].Event, Executive, KernelMode, false, nullptr);
             ctxs[i].Status = ctxs[i].iosb.Status;
@@ -667,7 +667,7 @@ end:
     if (dummypage)
         ExFreePool(dummypage);
 
-    for (unsigned int i = 0; i < array_info.raid_disks; i++) {
+    for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].mdl)
             IoFreeMdl(ctxs[i].mdl);
 
@@ -719,7 +719,7 @@ NTSTATUS set_pdo::read_raid10(PIRP Irp, bool* no_complete) {
     read_device++;
 
     if (is_offset) {
-        Status = read_raid10_offset(Irp, no_complete);
+        Status = read_raid10_offset(this, Irp, no_complete);
         goto end2;
     }
 
