@@ -928,7 +928,7 @@ static NTSTATUS disk_get_drive_geometry(uint64_t array_size, PIRP Irp, PDEVICE_O
     return STATUS_SUCCESS;
 }
 
-NTSTATUS set_pdo::disk_get_length_info(PIRP Irp) {
+static NTSTATUS disk_get_length_info(uint64_t array_size, PIRP Irp) {
     PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
     if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(GET_LENGTH_INFORMATION))
@@ -964,7 +964,7 @@ NTSTATUS set_device::device_control(PIRP Irp) {
             return disk_get_drive_geometry(pdo->array_size, Irp, devobj);
 
         case IOCTL_DISK_GET_LENGTH_INFO:
-            return pdo->disk_get_length_info(Irp);
+            return disk_get_length_info(pdo->array_size, Irp);
 
         default:
             ERR("ioctl %x\n", IrpSp->Parameters.DeviceIoControl.IoControlCode);
