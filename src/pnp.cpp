@@ -400,22 +400,22 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
 
     set_pdo* sd = nullptr;
 
-    {
-        shared_eresource lock(&dev_lock);
+    ExAcquireResourceSharedLite(&dev_lock, true);
 
-        LIST_ENTRY* le = dev_list.Flink;
+    LIST_ENTRY* le = dev_list.Flink;
 
-        while (le != &dev_list) {
-            auto sd2 = CONTAINING_RECORD(le, set_pdo, list_entry);
+    while (le != &dev_list) {
+        auto sd2 = CONTAINING_RECORD(le, set_pdo, list_entry);
 
-            if (sd2->pdo == PhysicalDeviceObject) {
-                sd = sd2;
-                break;
-            }
-
-            le = le->Flink;
+        if (sd2->pdo == PhysicalDeviceObject) {
+            sd = sd2;
+            break;
         }
+
+        le = le->Flink;
     }
+
+    ExReleaseResourceLite(&dev_lock);
 
     if (!sd) {
         WARN("unrecognized PDO %p\n", PhysicalDeviceObject);
