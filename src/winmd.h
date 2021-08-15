@@ -355,20 +355,6 @@ private:
     ERESOURCE* e;
 };
 
-class exclusive_eresource {
-public:
-    exclusive_eresource(ERESOURCE* e) : e(e) {
-        ExAcquireResourceExclusiveLite(e, true);
-    }
-
-    ~exclusive_eresource() {
-        ExReleaseResourceLite(e);
-    }
-
-private:
-    ERESOURCE* e;
-};
-
 static __inline void get_raid0_offset(uint64_t off, uint64_t stripe_length, uint32_t num_stripes, uint64_t* stripeoff, uint32_t* stripe) {
     uint64_t initoff, startoff;
 
