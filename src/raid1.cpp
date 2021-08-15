@@ -17,14 +17,14 @@
 
 #include "winmd.h"
 
-NTSTATUS set_pdo::read_raid1(PIRP Irp, bool* no_complete) {
+NTSTATUS read_raid1(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     NTSTATUS Status;
 
-    ExAcquireResourceSharedLite(&lock, true);
+    ExAcquireResourceSharedLite(&pdo->lock, true);
 
-    read_device++;
+    pdo->read_device++;
 
-    auto c = child_list[read_device % array_info.raid_disks];
+    auto c = pdo->child_list[pdo->read_device % pdo->array_info.raid_disks];
 
     IoCopyCurrentIrpStackLocationToNext(Irp);
 
@@ -37,7 +37,7 @@ NTSTATUS set_pdo::read_raid1(PIRP Irp, bool* no_complete) {
 
     Status = IoCallDriver(c->device, Irp);
 
-    ExReleaseResourceLite(&lock);
+    ExReleaseResourceLite(&pdo->lock);
 
     return Status;
 }

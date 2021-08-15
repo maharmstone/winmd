@@ -295,7 +295,6 @@ public:
     UNICODE_STRING bus_name;
 
 private:
-    NTSTATUS read_raid1(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid45(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid6(PIRP Irp, bool* no_complete);
     NTSTATUS read_raid10(PIRP Irp, bool* no_complete);
@@ -351,6 +350,9 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
 // raid0.cpp
 NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete);
 NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete);
+
+// raid1.cpp
+NTSTATUS read_raid1(set_pdo* pdo, PIRP Irp, bool* no_complete);
 
 class io_context {
 public:
