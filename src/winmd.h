@@ -348,7 +348,11 @@ NTSTATUS write_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
 
 class io_context {
 public:
-    io_context() { }
+    io_context() {
+        Irp = nullptr;
+        va = nullptr;
+        mdl = nullptr;
+    }
 
     io_context(set_child* sc, uint64_t stripe_start, uint64_t stripe_end) : sc(sc), stripe_start(stripe_start), stripe_end(stripe_end) {
         Irp = IoAllocateIrp(sc->device->StackSize, false);
@@ -366,6 +370,9 @@ public:
         IoSetCompletionRoutine(Irp, io_completion, this, true, true, true);
 
         Status = STATUS_SUCCESS;
+
+        va = nullptr;
+        mdl = nullptr;
     }
 
     ~io_context() {
@@ -379,16 +386,16 @@ public:
             IoFreeIrp(Irp);
     }
 
-    PIRP Irp = nullptr;
+    PIRP Irp;
     KEVENT Event;
     IO_STATUS_BLOCK iosb;
     NTSTATUS Status;
     set_child* sc;
     uint64_t stripe_start;
     uint64_t stripe_end;
-    void* va = nullptr;
+    void* va;
     void* va2;
-    PMDL mdl = nullptr;
+    PMDL mdl;
     uint8_t* addr;
     PFN_NUMBER* pfns;
     PFN_NUMBER* pfnp;
