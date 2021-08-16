@@ -22,17 +22,17 @@
 
 static const WCHAR drive_letter_prefix[] = L"\\DosDevices\\";
 
-static char get_drive_letter2(MOUNTMGR_MOUNT_POINTS* points) {
+static char get_drive_letter2(const MOUNTMGR_MOUNT_POINTS* points) {
     TRACE("%u points\n", points->NumberOfMountPoints);
 
     for (ULONG i = 0; i < points->NumberOfMountPoints; i++) {
-        const MOUNTMGR_MOUNT_POINT& mmp = points->MountPoints[i];
-        WCHAR* symlink = (WCHAR*)((uint8_t*)points + mmp.SymbolicLinkNameOffset);
+        const MOUNTMGR_MOUNT_POINT* mmp = &points->MountPoints[i];
+        WCHAR* symlink = (WCHAR*)((uint8_t*)points + mmp->SymbolicLinkNameOffset);
 
         TRACE("point %u\n", i);
-        TRACE("symbolic link %.*S\n", mmp.SymbolicLinkNameLength / sizeof(WCHAR), symlink);
+        TRACE("symbolic link %.*S\n", mmp->SymbolicLinkNameLength / sizeof(WCHAR), symlink);
 
-        if (mmp.SymbolicLinkNameLength == sizeof(drive_letter_prefix) + sizeof(WCHAR) &&
+        if (mmp->SymbolicLinkNameLength == sizeof(drive_letter_prefix) + sizeof(WCHAR) &&
             RtlCompareMemory(symlink, drive_letter_prefix, sizeof(drive_letter_prefix) - sizeof(WCHAR)) == sizeof(drive_letter_prefix) - sizeof(WCHAR) &&
             symlink[sizeof(drive_letter_prefix) / sizeof(WCHAR)] == ':')
             return (char)symlink[(sizeof(drive_letter_prefix) / sizeof(WCHAR)) - 1];
@@ -41,9 +41,9 @@ static char get_drive_letter2(MOUNTMGR_MOUNT_POINTS* points) {
     return 0;
 }
 
-char get_drive_letter(HANDLE h, const UNICODE_STRING& name) {
+char get_drive_letter(HANDLE h, const UNICODE_STRING* name) {
     NTSTATUS Status;
-    USHORT mmmp_len = sizeof(MOUNTMGR_MOUNT_POINT) + name.Length;
+    USHORT mmmp_len = sizeof(MOUNTMGR_MOUNT_POINT) + name->Length;
     char ret;
 
     MOUNTMGR_MOUNT_POINT* mmmp = (MOUNTMGR_MOUNT_POINT*)ExAllocatePoolWithTag(NonPagedPool, mmmp_len, ALLOC_TAG);
@@ -56,9 +56,9 @@ char get_drive_letter(HANDLE h, const UNICODE_STRING& name) {
     RtlZeroMemory(mmmp, mmmp_len);
 
     mmmp->DeviceNameOffset = sizeof(MOUNTMGR_MOUNT_POINT);
-    mmmp->DeviceNameLength = name.Length;
+    mmmp->DeviceNameLength = name->Length;
 
-    RtlCopyMemory((uint8_t*)mmmp + mmmp->DeviceNameOffset, name.Buffer, name.Length);
+    RtlCopyMemory((uint8_t*)mmmp + mmmp->DeviceNameOffset, name->Buffer, name->Length);
 
     MOUNTMGR_MOUNT_POINTS points;
     IO_STATUS_BLOCK iosb;

@@ -287,15 +287,15 @@ NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     bool no_complete = false;
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
-        case device_type::control:
+        case device_type_control:
             Status = control_pnp((control_device*)(DeviceObject->DeviceExtension), Irp, &no_complete);
             break;
 
-        case device_type::set:
+        case device_type_set:
             Status = set_pnp((set_device*)(DeviceObject->DeviceExtension), Irp, &no_complete);
             break;
 
-        case device_type::pdo:
+        case device_type_pdo:
             Status = pdo_pnp((set_pdo*)(DeviceObject->DeviceExtension), Irp);
             break;
 
@@ -382,7 +382,7 @@ static NTSTATUS add_set_device(set_pdo* pdo) {
     voldev->Flags |= DO_DIRECT_IO;
 
     sd = (set_device*)voldev->DeviceExtension;
-    sd->type = device_type::set;
+    sd->type = device_type_set;
     sd->pdo = pdo;
     sd->devobj = voldev;
     sd->open_count = 0;

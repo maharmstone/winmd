@@ -17,14 +17,14 @@
 
 #include "winmd.h"
 
-struct io_context_linear {
+typedef struct {
     PIRP Irp;
     KEVENT Event;
     IO_STATUS_BLOCK iosb;
     NTSTATUS Status;
     PMDL mdl;
     LIST_ENTRY list_entry;
-};
+} io_context_linear;
 
 static NTSTATUS __stdcall io_completion_linear(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
     io_context_linear* context = (io_context_linear*)ctx;

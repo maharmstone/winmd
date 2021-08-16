@@ -17,7 +17,7 @@
 
 #include "winmd.h"
 
-struct io_context_raid10 {
+typedef struct {
     PIRP Irp;
     KEVENT Event;
     IO_STATUS_BLOCK iosb;
@@ -30,7 +30,7 @@ struct io_context_raid10 {
     PFN_NUMBER* pfnp;
     uint64_t stripe_pos;
     LIST_ENTRY list_entry;
-};
+} io_context_raid10;
 
 static NTSTATUS __stdcall io_completion_raid10(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
     io_context_raid10* context = (io_context_raid10*)ctx;
@@ -170,7 +170,7 @@ static NTSTATUS read_raid10_odd(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             {
                 PPFN_NUMBER pfns = MmGetMdlPfnArray(ctxs[i].mdl);
 
-                uint32_t pages = sector_align((uint32_t)(ctxs[i].stripe_end - ctxs[i].stripe_start), PAGE_SIZE) / PAGE_SIZE;
+                uint32_t pages = sector_align32((uint32_t)(ctxs[i].stripe_end - ctxs[i].stripe_start), PAGE_SIZE) / PAGE_SIZE;
 
                 for (uint32_t j = 0; j < pages; j++) {
                     pfns[j] = dummy;
@@ -1817,17 +1817,17 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
         }
 
         for (unsigned int i = 0; i < pdo->array_info.raid_disks / near; i++) {
-            io_context_raid10& ctxa = ctxs[near * far * i];
+            io_context_raid10* ctxa = &ctxs[near * far * i];
 
-            if (ctxa.stripe_end != ctxa.stripe_start) {
-                ctxa.mdl = IoAllocateMdl(NULL, (ULONG)(ctxa.stripe_end - ctxa.stripe_start), false, false, NULL);
-                if (!ctxa.mdl) {
+            if (ctxa->stripe_end != ctxa->stripe_start) {
+                ctxa->mdl = IoAllocateMdl(NULL, (ULONG)(ctxa->stripe_end - ctxa->stripe_start), false, false, NULL);
+                if (!ctxa->mdl) {
                     ERR("IoAllocateMdl failed\n");
                     Status = STATUS_INSUFFICIENT_RESOURCES;
                     goto end;
                 }
 
-                ctxa.mdl->MdlFlags |= MDL_PARTIAL;
+                ctxa->mdl->MdlFlags |= MDL_PARTIAL;
 
                 for (unsigned int j = 0; j < near; j++) { // FIXME
                     for (unsigned int k = 0; k < far; k++) {
@@ -1847,12 +1847,12 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
                         PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(ctx->Irp);
                         IrpSp2->MajorFunction = IRP_MJ_WRITE;
 
-                        ctx->Irp->MdlAddress = ctxa.mdl;
+                        ctx->Irp->MdlAddress = ctxa->mdl;
 
                         IrpSp2->FileObject = pdo->child_list[disk_num]->fileobj;
-                        IrpSp2->Parameters.Write.Length = (ULONG)(ctxa.stripe_end - ctxa.stripe_start);
+                        IrpSp2->Parameters.Write.Length = (ULONG)(ctxa->stripe_end - ctxa->stripe_start);
 
-                        IrpSp2->Parameters.Write.ByteOffset.QuadPart = ctxa.stripe_start;
+                        IrpSp2->Parameters.Write.ByteOffset.QuadPart = ctxa->stripe_start;
                         IrpSp2->Parameters.Write.ByteOffset.QuadPart += (pdo->child_list[disk_num]->disk_info.data_offset * 512);
                         IrpSp2->Parameters.Write.ByteOffset.QuadPart += k * (pdo->child_list[disk_num]->disk_info.data_size / far) * 512;
 

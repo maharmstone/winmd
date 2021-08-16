@@ -292,7 +292,7 @@ static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_S
                             FILE_SHARE_READ, FILE_SYNCHRONOUS_IO_ALERT);
 
         if (NT_SUCCESS(Status)) {
-            char c = get_drive_letter(h, *devpath);
+            char c = get_drive_letter(h, devpath);
 
             TRACE("get_drive_letter returned %u\n", c);
 
@@ -421,7 +421,7 @@ static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_S
     newdev->Flags |= DO_BUS_ENUMERATED_DEVICE;
 
     sd = (set_pdo*)newdev->DeviceExtension;
-    sd->type = device_type::pdo;
+    sd->type = device_type_pdo;
     sd->pdo = newdev;
     sd->stack_size = devobj->StackSize + 1;
     sd->dev_sector_size = devobj->SectorSize == 0 ? 512 : devobj->SectorSize;
@@ -576,7 +576,7 @@ void volume_arrival(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
     if (sector_size < 4096)
         sector_size = 4096;
 
-    uint32_t buflen = sector_align((uint32_t)sizeof(mdraid_superblock), sector_size);
+    uint32_t buflen = sector_align32((uint32_t)sizeof(mdraid_superblock), sector_size);
 
     mdraid_superblock* sb = (mdraid_superblock*)ExAllocatePoolWithTag(PagedPool, buflen, ALLOC_TAG);
     if (!sb) {
@@ -1041,13 +1041,13 @@ NTSTATUS drv_create(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     top_level = is_top_level(Irp);
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
-        case device_type::control:
-        case device_type::pdo:
+        case device_type_control:
+        case device_type_pdo:
             Irp->IoStatus.Information = FILE_OPENED;
             Status = STATUS_SUCCESS;
             break;
 
-        case device_type::set:
+        case device_type_set:
             Status = set_create((set_device*)(DeviceObject->DeviceExtension), Irp);
             break;
 
@@ -1075,7 +1075,7 @@ NTSTATUS drv_device_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     top_level = is_top_level(Irp);
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
-        case device_type::set:
+        case device_type_set:
             Status = set_device_control((set_device*)(DeviceObject->DeviceExtension), Irp);
             break;
 
@@ -1103,7 +1103,7 @@ NTSTATUS drv_shutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     top_level = is_top_level(Irp);
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
-        case device_type::pdo:
+        case device_type_pdo:
             Status = pdo_shutdown((set_pdo*)(DeviceObject->DeviceExtension), Irp);
             break;
 
@@ -1131,7 +1131,7 @@ NTSTATUS drv_power(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     top_level = is_top_level(Irp);
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
-        case device_type::control:
+        case device_type_control:
             Status = control_power(Irp);
             break;
 
@@ -1167,11 +1167,11 @@ static NTSTATUS drv_close(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     top_level = is_top_level(Irp);
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
-        case device_type::set:
+        case device_type_set:
             Status = set_close((set_device*)(DeviceObject->DeviceExtension));
             break;
 
-        case device_type::pdo:
+        case device_type_pdo:
             Status = STATUS_SUCCESS;
             break;
 
@@ -1281,11 +1281,11 @@ static NTSTATUS drv_system_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     bool no_complete = false;
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
-        case device_type::control:
+        case device_type_control:
             Status = control_system_control((control_device*)(DeviceObject->DeviceExtension), Irp, &no_complete);
             break;
 
-        case device_type::set:
+        case device_type_set:
             Status = set_system_control((set_device*)(DeviceObject->DeviceExtension), Irp, &no_complete);
             break;
 
@@ -1306,7 +1306,7 @@ static NTSTATUS drv_system_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     return Status;
 }
 
-extern "C" NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
+NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
     NTSTATUS Status;
 
     drvobj = DriverObject;
@@ -1358,7 +1358,7 @@ extern "C" NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_
     }
 
     control_device* cde = (control_device*)master_devobj->DeviceExtension;
-    cde->type = device_type::control;
+    cde->type = device_type_control;
 
     ExInitializeResourceLite(&dev_lock);
 

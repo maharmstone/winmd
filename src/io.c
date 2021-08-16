@@ -23,7 +23,7 @@ static const int64_t flush_interval = 5;
 
 static NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx);
 
-struct io_context {
+typedef struct {
     PIRP Irp;
     KEVENT Event;
     IO_STATUS_BLOCK iosb;
@@ -34,7 +34,7 @@ struct io_context {
     void* va2;
     PMDL mdl;
     LIST_ENTRY list_entry;
-};
+} io_context;
 
 static NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
     io_context* context = (io_context*)ctx;
@@ -219,7 +219,7 @@ NTSTATUS drv_read(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     bool no_complete = false;
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
-        case device_type::set:
+        case device_type_set:
             Status = set_read((set_device*)(DeviceObject->DeviceExtension), Irp, &no_complete);
             break;
 
@@ -252,7 +252,7 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
 
     InitializeListHead(&ctxs);
 
-    uint8_t* valid = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, sector_align(pdo->array_info.chunksize, 32) / 8, ALLOC_TAG);
+    uint8_t* valid = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, sector_align32(pdo->array_info.chunksize, 32) / 8, ALLOC_TAG);
     if (!valid) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -507,7 +507,7 @@ NTSTATUS add_partial_chunk(set_pdo* pdo, uint64_t offset, uint32_t length, void*
 
     pclen = offsetof(partial_chunk, data[0]);
     pclen += full_chunk; // data length
-    pclen += sector_align(pdo->array_info.chunksize * data_disks, 32) / 8; // bitmap length
+    pclen += sector_align32(pdo->array_info.chunksize * data_disks, 32) / 8; // bitmap length
 
     pc = (partial_chunk*)ExAllocatePoolWithTag(NonPagedPool/*FIXME - ?*/, pclen, ALLOC_TAG);
     if (!pc) {
@@ -633,7 +633,7 @@ NTSTATUS drv_write(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     bool no_complete = false;
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
-        case device_type::set:
+        case device_type_set:
             Status = set_write((set_device*)(DeviceObject->DeviceExtension), Irp, &no_complete);
             break;
 

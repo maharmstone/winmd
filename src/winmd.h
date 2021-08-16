@@ -19,6 +19,9 @@
 
 #include <ntifs.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <stdalign.h>
+#include <uchar.h>
 #include <mountdev.h>
 
 #define DEBUG_PARANOID
@@ -28,13 +31,13 @@
 static const char16_t device_prefix[] = u"\\Device\\WinMD{";
 
 #ifdef _DEBUG
-struct serial_logger {
+typedef struct {
     PFILE_OBJECT comfo;
     PDEVICE_OBJECT comdo;
     ERESOURCE log_lock;
     bool unloading;
     HANDLE serial_thread_handle;
-};
+} serial_logger;
 
 extern serial_logger* logger;
 
@@ -87,27 +90,27 @@ extern bool have_sse2;
 #define seh_finally if (1)
 #endif
 
-enum class device_type {
-    control,
-    set,
-    pdo
+enum device_type {
+    device_type_control,
+    device_type_set,
+    device_type_pdo
 };
 
-struct control_device {
+typedef struct {
     enum device_type type;
     PDEVICE_OBJECT buspdo;
     PDEVICE_OBJECT attached_device;
     UNICODE_STRING bus_name;
-};
+} control_device;
 
-__inline static uint64_t sector_align(uint64_t n, uint64_t a) {
+__inline static uint64_t sector_align64(uint64_t n, uint64_t a) {
     if (n & (a - 1))
         n = (n + a) & ~(a - 1);
 
     return n;
 }
 
-__inline static uint32_t sector_align(uint32_t n, uint32_t a) {
+__inline static uint32_t sector_align32(uint32_t n, uint32_t a) {
     if (n & (a - 1))
         n = (n + a) & ~(a - 1);
 
@@ -134,7 +137,7 @@ __inline static uint32_t sector_align(uint32_t n, uint32_t a) {
 
 #pragma pack(push,1)
 
-struct mdraid_disk_info {
+typedef struct {
     uint64_t data_offset;
     uint64_t data_size;
     uint64_t super_offset;
@@ -143,9 +146,9 @@ struct mdraid_disk_info {
     uint32_t cnt_correct_read;
     uint8_t device_uuid[16];
     uint8_t devflags;
-};
+} mdraid_disk_info;
 
-struct mdraid_array_info {
+typedef struct {
     uint8_t set_uuid[16];
     char set_name[32];
     uint64_t ctime;
@@ -155,21 +158,21 @@ struct mdraid_array_info {
     uint32_t chunksize;
     uint32_t raid_disks;
     uint32_t bitmap_offset;
-};
+} mdraid_array_info;
 
-struct mdraid_array_state {
+typedef struct {
     uint64_t utime;
     uint64_t events;
     uint64_t resync_offset;
     uint32_t sb_csum;
     uint32_t max_dev;
-};
+} mdraid_array_state;
 
-struct mdraid_roles {
+typedef struct {
     uint16_t dev_roles[256]; // FIXME - is this the right maximum size?
-};
+} mdraid_roles;
 
-struct mdraid_superblock {
+typedef struct {
     uint32_t magic;
     uint32_t major_version;
     uint32_t feature_map;
@@ -186,37 +189,37 @@ struct mdraid_superblock {
     mdraid_array_state array_state;
     uint8_t pad3[32];
     mdraid_roles roles;
-};
+} mdraid_superblock;
 
 #pragma pack(pop)
 
-struct set_child {
+typedef struct {
     PDEVICE_OBJECT device;
     PFILE_OBJECT fileobj;
     mdraid_disk_info disk_info;
     UNICODE_STRING devpath;
     LIST_ENTRY list_entry;
-};
+} set_child;
 
-struct partial_chunk {
+typedef struct {
     LIST_ENTRY list_entry;
     uint64_t offset;
     RTL_BITMAP bmp;
     alignas(16) uint8_t data[1];
-};
+} partial_chunk;
 
-struct set_pdo;
+typedef struct _set_pdo set_pdo;
 
-struct set_device {
+typedef struct {
     enum device_type type;
     set_pdo* pdo;
     PDEVICE_OBJECT devobj;
     PDEVICE_OBJECT attached_device;
     LONG open_count;
     ERESOURCE lock;
-};
+} set_device;
 
-struct set_pdo {
+typedef struct _set_pdo {
     enum device_type type;
     ERESOURCE lock;
     mdraid_array_info array_info;
@@ -240,7 +243,7 @@ struct set_pdo {
     KEVENT flush_thread_finished;
     bool readonly;
     UNICODE_STRING bus_name;
-};
+} set_pdo;
 
 static __inline void get_raid0_offset(uint64_t off, uint64_t stripe_length, uint32_t num_stripes, uint64_t* stripeoff, uint32_t* stripe) {
     uint64_t initoff, startoff;
@@ -296,5 +299,5 @@ NTSTATUS read_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
 NTSTATUS write_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
 
 // mountmgr.cpp
-char get_drive_letter(HANDLE h, const UNICODE_STRING& name);
+char get_drive_letter(HANDLE h, const UNICODE_STRING* name);
 NTSTATUS remove_drive_letter(HANDLE h, char c);

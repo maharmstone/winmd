@@ -4,17 +4,17 @@ project(winmd VERSION 0.1.0)
 
 # winmd.sys
 
-set(SRC_FILES src/winmd.cpp
-    src/io.cpp
-    src/linear.cpp
-    src/logger.cpp
-    src/mountmgr.cpp
-    src/pnp.cpp
-    src/raid0.cpp
-    src/raid10.cpp
-    src/raid1.cpp
-    src/raid45.cpp
-    src/raid6.cpp
+set(SRC_FILES src/winmd.c
+    src/io.c
+    src/linear.c
+    src/logger.c
+    src/mountmgr.c
+    src/pnp.c
+    src/raid0.c
+    src/raid10.c
+    src/raid1.c
+    src/raid45.c
+    src/raid6.c
     ${CMAKE_CURRENT_BINARY_DIR}/winmd.rc)
 
 if(MSVC) # cmake bug 15170
@@ -35,7 +35,7 @@ add_library(winmd SHARED ${SRC_FILES})
 
 if(MSVC)
     include_directories("$ENV{WindowsSdkDir}Include\\$ENV{WindowsSDKLibVersion}km")
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND WIN32)
+elseif(CMAKE_C_COMPILER_ID STREQUAL "GNU" AND WIN32)
     include_directories("${CMAKE_FIND_ROOT_PATH}/usr/include/ddk")
 endif()
 
@@ -95,11 +95,11 @@ if(MSVC)
     string(REGEX REPLACE "/RTC(su|[1su])" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
     string(REGEX REPLACE "/RTC(su|[1su])" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
 else()
-    target_compile_options(winmd PUBLIC -Wall -Wno-expansion-to-defined -Wunused-parameter -Wtype-limits -Wextra -Wno-unknown-pragmas -msse4.2 -fno-exceptions -mrtd -std=c++17 -fno-rtti)
+    target_compile_options(winmd PUBLIC -Wall -Wno-expansion-to-defined -Wunused-parameter -Wtype-limits -Wextra -Wno-unknown-pragmas -msse4.2 -mrtd)
 
-    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
         target_compile_options(winmd PUBLIC -Werror=cast-function-type)
-    elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
         target_compile_options(winmd PUBLIC -Wno-pragma-pack) # ignore warning in mingw headers
     endif()
 

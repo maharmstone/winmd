@@ -17,12 +17,12 @@
 
 #include "winmd.h"
 
-struct io_context_raid1 {
+typedef struct {
     PIRP Irp;
     KEVENT Event;
     IO_STATUS_BLOCK iosb;
     NTSTATUS Status;
-};
+} io_context_raid1;
 
 NTSTATUS read_raid1(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     NTSTATUS Status;

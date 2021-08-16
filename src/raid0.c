@@ -17,7 +17,7 @@
 
 #include "winmd.h"
 
-struct io_context_raid0 {
+typedef struct {
     PIRP Irp;
     KEVENT Event;
     IO_STATUS_BLOCK iosb;
@@ -28,7 +28,7 @@ struct io_context_raid0 {
     PMDL mdl;
     PFN_NUMBER* pfns;
     PFN_NUMBER* pfnp;
-};
+} io_context_raid0;
 
 static NTSTATUS __stdcall io_completion_raid0(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
     io_context_raid0* context = (io_context_raid0*)ctx;
