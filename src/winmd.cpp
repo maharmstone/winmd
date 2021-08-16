@@ -1038,19 +1038,17 @@ NTSTATUS drv_create(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     top_level = is_top_level(Irp);
 
-    auto dev = (device*)DeviceObject->DeviceExtension;
-
-    switch (dev->type) {
+    switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::control:
-            Status = static_cast<control_device*>(dev)->create(Irp);
+            Status = ((control_device*)(DeviceObject->DeviceExtension))->create(Irp);
             break;
 
         case device_type::set:
-            Status = static_cast<set_device*>(dev)->create(Irp);
+            Status = ((set_device*)(DeviceObject->DeviceExtension))->create(Irp);
             break;
 
         case device_type::pdo:
-            Status = static_cast<set_pdo*>(dev)->create(Irp);
+            Status = ((set_pdo*)(DeviceObject->DeviceExtension))->create(Irp);
             break;
 
         default:
@@ -1076,11 +1074,9 @@ NTSTATUS drv_device_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     top_level = is_top_level(Irp);
 
-    auto dev = (device*)DeviceObject->DeviceExtension;
-
-    switch (dev->type) {
+    switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::set:
-            Status = static_cast<set_device*>(dev)->device_control(Irp);
+            Status = ((set_device*)(DeviceObject->DeviceExtension))->device_control(Irp);
             break;
 
         default:
@@ -1106,11 +1102,9 @@ NTSTATUS drv_shutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     top_level = is_top_level(Irp);
 
-    auto dev = (device*)DeviceObject->DeviceExtension;
-
-    switch (dev->type) {
+    switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::pdo:
-            Status = static_cast<set_pdo*>(dev)->shutdown(Irp);
+            Status = ((set_pdo*)(DeviceObject->DeviceExtension))->shutdown(Irp);
             break;
 
         default:
@@ -1136,11 +1130,9 @@ NTSTATUS drv_power(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     top_level = is_top_level(Irp);
 
-    auto dev = (device*)DeviceObject->DeviceExtension;
-
-    switch (dev->type) {
+    switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::control:
-            Status = static_cast<control_device*>(dev)->power(Irp);
+            Status = ((control_device*)(DeviceObject->DeviceExtension))->power(Irp);
             break;
 
         default:
@@ -1174,11 +1166,9 @@ static NTSTATUS drv_close(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     top_level = is_top_level(Irp);
 
-    auto dev = (device*)DeviceObject->DeviceExtension;
-
-    switch (dev->type) {
+    switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::set:
-            Status = static_cast<set_device*>(dev)->close(Irp);
+            Status = ((set_device*)(DeviceObject->DeviceExtension))->close(Irp);
             break;
 
         default:
@@ -1284,17 +1274,15 @@ static NTSTATUS drv_system_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     top_level = is_top_level(Irp);
 
-    auto dev = (device*)DeviceObject->DeviceExtension;
-
     bool no_complete = false;
 
-    switch (dev->type) {
+    switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::control:
-            Status = static_cast<control_device*>(dev)->system_control(Irp, &no_complete);
+            Status = ((control_device*)(DeviceObject->DeviceExtension))->system_control(Irp, &no_complete);
             break;
 
         case device_type::set:
-            Status = static_cast<set_device*>(dev)->system_control(Irp, &no_complete);
+            Status = ((set_device*)(DeviceObject->DeviceExtension))->system_control(Irp, &no_complete);
             break;
 
         default:

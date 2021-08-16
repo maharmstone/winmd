@@ -216,13 +216,11 @@ NTSTATUS drv_read(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     top_level = is_top_level(Irp);
 
-    auto dev = (device*)DeviceObject->DeviceExtension;
-
     bool no_complete = false;
 
-    switch (dev->type) {
+    switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::set:
-            Status = static_cast<set_device*>(dev)->read(Irp, &no_complete);
+            Status = ((set_device*)(DeviceObject->DeviceExtension))->read(Irp, &no_complete);
             break;
 
         default:
@@ -632,13 +630,11 @@ NTSTATUS drv_write(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     top_level = is_top_level(Irp);
 
-    auto dev = (device*)DeviceObject->DeviceExtension;
-
     bool no_complete = false;
 
-    switch (dev->type) {
+    switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::set:
-            Status = static_cast<set_device*>(dev)->write(Irp, &no_complete);
+            Status = ((set_device*)(DeviceObject->DeviceExtension))->write(Irp, &no_complete);
             break;
 
         default:

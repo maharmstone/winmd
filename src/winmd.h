@@ -98,18 +98,14 @@ enum class device_type {
     pdo
 };
 
-class device {
-public:
-    enum device_type type;
-};
-
-class control_device : public device {
+class control_device {
 public:
     NTSTATUS create(PIRP Irp);
     NTSTATUS pnp(PIRP Irp, bool* no_complete);
     NTSTATUS power(PIRP Irp);
     NTSTATUS system_control(PIRP Irp, bool* no_complete);
 
+    enum device_type type;
     PDEVICE_OBJECT buspdo;
     PDEVICE_OBJECT attached_device;
     UNICODE_STRING bus_name;
@@ -227,7 +223,7 @@ struct partial_chunk {
 
 class set_pdo;
 
-class set_device : public device {
+class set_device {
 public:
     set_device(set_pdo* pdo, PDEVICE_OBJECT devobj) : pdo(pdo), devobj(devobj) {
         ExInitializeResourceLite(&lock);
@@ -245,6 +241,7 @@ public:
     NTSTATUS read(PIRP Irp, bool* no_complete);
     NTSTATUS write(PIRP Irp, bool* no_complete);
 
+    enum device_type type;
     set_pdo* pdo;
     PDEVICE_OBJECT devobj;
     PDEVICE_OBJECT attached_device;
@@ -252,7 +249,7 @@ public:
     ERESOURCE lock;
 };
 
-class set_pdo : public device {
+class set_pdo {
 public:
     set_pdo();
     ~set_pdo();
@@ -264,6 +261,7 @@ public:
 
     friend set_device;
 
+    enum device_type type;
     ERESOURCE lock;
     mdraid_array_info array_info;
     mdraid_array_state array_state;

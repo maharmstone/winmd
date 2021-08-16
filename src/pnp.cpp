@@ -32,21 +32,19 @@ NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     top_level = is_top_level(Irp);
 
-    auto dev = (device*)DeviceObject->DeviceExtension;
-
     bool no_complete = false;
 
-    switch (dev->type) {
+    switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::control:
-            Status = static_cast<control_device*>(dev)->pnp(Irp, &no_complete);
+            Status = ((control_device*)(DeviceObject->DeviceExtension))->pnp(Irp, &no_complete);
             break;
 
         case device_type::set:
-            Status = static_cast<set_device*>(dev)->pnp(Irp, &no_complete);
+            Status = ((set_device*)(DeviceObject->DeviceExtension))->pnp(Irp, &no_complete);
             break;
 
         case device_type::pdo:
-            Status = static_cast<set_pdo*>(dev)->pnp(Irp, &no_complete);
+            Status = ((set_pdo*)(DeviceObject->DeviceExtension))->pnp(Irp, &no_complete);
             break;
 
         default: {
