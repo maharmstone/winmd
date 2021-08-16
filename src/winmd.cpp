@@ -16,7 +16,6 @@
  * along with WinMD.  If not, see <http://www.gnu.org/licenses/>. */
 
 #include "winmd.h"
-#include "mountmgr.h"
 #include <ntddstor.h>
 #include <ntdddisk.h>
 #include <wdmguid.h>
@@ -281,19 +280,32 @@ static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_S
         c->devpath.Buffer = nullptr;
 
     {
-        mountmgr mm;
+        UNICODE_STRING us;
+        OBJECT_ATTRIBUTES attr;
+        IO_STATUS_BLOCK iosb;
+        NTSTATUS Status;
+        HANDLE h;
 
-        if (NT_SUCCESS(mm.Status)) {
-            char c = mm.get_drive_letter(*devpath);
+        RtlInitUnicodeString(&us, MOUNTMGR_DEVICE_NAME);
+        InitializeObjectAttributes(&attr, &us, 0, nullptr, nullptr);
 
-            TRACE("mountmgr::get_drive_letter returned %u\n", c);
+        Status = NtOpenFile(&h, FILE_GENERIC_READ | FILE_GENERIC_WRITE, &attr, &iosb,
+                            FILE_SHARE_READ, FILE_SYNCHRONOUS_IO_ALERT);
+
+        if (NT_SUCCESS(Status)) {
+            char c = get_drive_letter(h, *devpath);
+
+            TRACE("get_drive_letter returned %u\n", c);
 
             if (c != 0) {
-                NTSTATUS Status = mm.remove_drive_letter(c);
+                NTSTATUS Status = remove_drive_letter(h, c);
                 if (!NT_SUCCESS(Status))
-                    ERR("mountmgr::remove_drive_letter returned %08x\n", Status);
+                    ERR("remove_drive_letter returned %08x\n", Status);
             }
         }
+
+        if (h)
+            NtClose(h);
     }
 
     ExAcquireResourceExclusiveLite(&dev_lock, true);

@@ -16,58 +16,11 @@
  * along with WinMD.  If not, see <http://www.gnu.org/licenses/>. */
 
 #include "winmd.h"
-#include "mountmgr.h"
 #include <mountmgr.h>
 #include <stdint.h>
 #include <stddef.h>
 
 static const WCHAR drive_letter_prefix[] = L"\\DosDevices\\";
-
-using namespace std;
-
-mountmgr::mountmgr() {
-    UNICODE_STRING us;
-    OBJECT_ATTRIBUTES attr;
-    IO_STATUS_BLOCK iosb;
-
-    RtlInitUnicodeString(&us, MOUNTMGR_DEVICE_NAME);
-    InitializeObjectAttributes(&attr, &us, 0, nullptr, nullptr);
-
-    Status = NtOpenFile(&h, FILE_GENERIC_READ | FILE_GENERIC_WRITE, &attr, &iosb,
-                        FILE_SHARE_READ, FILE_SYNCHRONOUS_IO_ALERT);
-}
-
-mountmgr::~mountmgr() {
-    if (h)
-        NtClose(h);
-}
-
-NTSTATUS mountmgr::volume_arrival_notification(const UNICODE_STRING& name) {
-    USHORT mmtn_len = offsetof(MOUNTMGR_TARGET_NAME, DeviceName[0]) + name.Length;
-    auto mmtn = (MOUNTMGR_TARGET_NAME*)ExAllocatePoolWithTag(PagedPool, mmtn_len, ALLOC_TAG);
-    NTSTATUS Status;
-    IO_STATUS_BLOCK iosb;
-
-    if (!mmtn) {
-        ERR("out of memory\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    mmtn->DeviceNameLength = name.Length;
-    RtlCopyMemory(mmtn->DeviceName, name.Buffer, name.Length);
-
-    Status = NtDeviceIoControlFile(h, nullptr, nullptr, nullptr, &iosb, IOCTL_MOUNTMGR_VOLUME_ARRIVAL_NOTIFICATION,
-                                   mmtn, mmtn_len, nullptr, 0);
-
-    ExFreePool(mmtn);
-
-    if (!NT_SUCCESS(Status)) {
-        ERR("NtDeviceIoControlFile returned %08x\n", Status);
-        return Status;
-    }
-
-    return Status;
-}
 
 static char get_drive_letter2(MOUNTMGR_MOUNT_POINTS* points) {
     TRACE("%u points\n", points->NumberOfMountPoints);
@@ -88,7 +41,7 @@ static char get_drive_letter2(MOUNTMGR_MOUNT_POINTS* points) {
     return 0;
 }
 
-char mountmgr::get_drive_letter(const UNICODE_STRING& name) {
+char get_drive_letter(HANDLE h, const UNICODE_STRING& name) {
     NTSTATUS Status;
     USHORT mmmp_len = sizeof(MOUNTMGR_MOUNT_POINT) + name.Length;
     char ret;
@@ -147,7 +100,7 @@ end:
     return ret;
 }
 
-NTSTATUS mountmgr::remove_drive_letter(char c) {
+NTSTATUS remove_drive_letter(HANDLE h, char c) {
     NTSTATUS Status;
     USHORT mmmp_len = sizeof(MOUNTMGR_MOUNT_POINT) + sizeof(drive_letter_prefix) + sizeof(WCHAR);
 

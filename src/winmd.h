@@ -302,3 +302,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp);
 // linear.cpp
 NTSTATUS read_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
 NTSTATUS write_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
+
+// mountmgr.cpp
+char get_drive_letter(HANDLE h, const UNICODE_STRING& name);
+NTSTATUS remove_drive_letter(HANDLE h, char c);
