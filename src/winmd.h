@@ -22,7 +22,7 @@
 #include <mountdev.h>
 #include <new>
 
-// #define DEBUG_PARANOID
+#define DEBUG_PARANOID
 
 #define ALLOC_TAG 0x6472444d // 'MDrd'
 
@@ -396,10 +396,8 @@ public:
     void* va;
     void* va2;
     PMDL mdl;
-    uint8_t* addr;
     PFN_NUMBER* pfns;
     PFN_NUMBER* pfnp;
     bool first;
-    uint64_t stripe_pos;
     LIST_ENTRY list_entry;
 };
