@@ -17,6 +17,24 @@
 
 #include "winmd.h"
 
+struct io_context_linear {
+    PIRP Irp;
+    KEVENT Event;
+    IO_STATUS_BLOCK iosb;
+    NTSTATUS Status;
+    PMDL mdl;
+    LIST_ENTRY list_entry;
+};
+
+static NTSTATUS __stdcall io_completion_linear(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
+    auto context = (io_context_linear*)ctx;
+
+    context->iosb = Irp->IoStatus;
+    KeSetEvent(&context->Event, 0, FALSE);
+
+    return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
 static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t start_disk, bool write) {
     NTSTATUS Status;
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -29,18 +47,35 @@ static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t sta
     for (uint32_t i = start_disk; i < pdo->array_info.raid_disks; i++) {
         auto io_length = (uint32_t)min(length, (pdo->child_list[i]->disk_info.data_size * 512) - offset);
 
-        auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
+        auto last = (io_context_linear*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_linear), ALLOC_TAG);
         if (!last) {
             Status = STATUS_INSUFFICIENT_RESOURCES;
             goto fail;
         }
 
-        new (last) io_context(pdo->child_list[i], offset + (pdo->child_list[i]->disk_info.data_offset * 512), io_length);
+        last->Irp = IoAllocateIrp(pdo->child_list[i]->device->StackSize, false);
+        if (!last->Irp) {
+            ERR("out of memory\n");
+            Status = STATUS_INSUFFICIENT_RESOURCES;
+            ExFreePool(last);
+            goto fail;
+        }
+
+        last->Irp->UserIosb = &last->iosb;
+
+        KeInitializeEvent(&last->Event, NotificationEvent, false);
+        last->Irp->UserEvent = &last->Event;
+
+        IoSetCompletionRoutine(last->Irp, io_completion_linear, last, true, true, true);
+
+        last->Status = STATUS_SUCCESS;
+
+        last->mdl = nullptr;
 
         InsertTailList(&ctxs, &last->list_entry);
 
         if (!NT_SUCCESS(last->Status)) {
-            ERR("io_context constructor returned %08x\n", last->Status);
+            ERR("io_context_linear constructor returned %08x\n", last->Status);
             Status = last->Status;
             goto fail;
         }
@@ -70,7 +105,7 @@ static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t sta
             IrpSp2->Parameters.Read.Length = io_length;
         }
 
-        last->Status = IoCallDriver(last->sc->device, last->Irp);
+        last->Status = IoCallDriver(pdo->child_list[i]->device, last->Irp);
 
         length -= io_length;
 
@@ -84,7 +119,7 @@ static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t sta
     Status = STATUS_SUCCESS;
 
     while (!IsListEmpty(&ctxs)) {
-        auto ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
+        auto ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context_linear, list_entry);
 
         if (ctx->Status == STATUS_PENDING) {
             KeWaitForSingleObject(&ctx->Event, Executive, KernelMode, false, nullptr);
@@ -96,7 +131,12 @@ static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t sta
             Status = ctx->Status;
         }
 
-        ctx->~io_context();
+        if (ctx->mdl)
+            IoFreeMdl(ctx->mdl);
+
+        if (ctx->Irp)
+            IoFreeIrp(ctx->Irp);
+
         ExFreePool(ctx);
     }
 
@@ -104,9 +144,14 @@ static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t sta
 
 fail:
     while (!IsListEmpty(&ctxs)) {
-        io_context* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
+        io_context_linear* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context_linear, list_entry);
 
-        ctx->~io_context();
+        if (ctx->mdl)
+            IoFreeMdl(ctx->mdl);
+
+        if (ctx->Irp)
+            IoFreeIrp(ctx->Irp);
+
         ExFreePool(ctx);
     }
 
