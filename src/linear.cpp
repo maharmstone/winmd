@@ -27,7 +27,7 @@ struct io_context_linear {
 };
 
 static NTSTATUS __stdcall io_completion_linear(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
-    auto context = (io_context_linear*)ctx;
+    io_context_linear* context = (io_context_linear*)ctx;
 
     context->iosb = Irp->IoStatus;
     KeSetEvent(&context->Event, 0, FALSE);
@@ -37,17 +37,17 @@ static NTSTATUS __stdcall io_completion_linear(PDEVICE_OBJECT, PIRP Irp, PVOID c
 
 static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t start_disk, bool write) {
     NTSTATUS Status;
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     uint32_t length = write ? IrpSp->Parameters.Write.Length : IrpSp->Parameters.Read.Length;
     LIST_ENTRY ctxs;
-    auto va = (uint8_t*)MmGetMdlVirtualAddress(Irp->MdlAddress);
+    uint8_t* va = (uint8_t*)MmGetMdlVirtualAddress(Irp->MdlAddress);
 
     InitializeListHead(&ctxs);
 
     for (uint32_t i = start_disk; i < pdo->array_info.raid_disks; i++) {
-        auto io_length = (uint32_t)min(length, (pdo->child_list[i]->disk_info.data_size * 512) - offset);
+        uint32_t io_length = (uint32_t)min(length, (pdo->child_list[i]->disk_info.data_size * 512) - offset);
 
-        auto last = (io_context_linear*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_linear), ALLOC_TAG);
+        io_context_linear* last = (io_context_linear*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_linear), ALLOC_TAG);
         if (!last) {
             Status = STATUS_INSUFFICIENT_RESOURCES;
             goto fail;
@@ -91,7 +91,7 @@ static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t sta
 
         IoBuildPartialMdl(Irp->MdlAddress, last->mdl, va, io_length);
 
-        auto IrpSp2 = IoGetNextIrpStackLocation(last->Irp);
+        PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(last->Irp);
 
         IrpSp2->FileObject = pdo->child_list[i]->fileobj;
 
@@ -119,7 +119,7 @@ static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t sta
     Status = STATUS_SUCCESS;
 
     while (!IsListEmpty(&ctxs)) {
-        auto ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context_linear, list_entry);
+        io_context_linear* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context_linear, list_entry);
 
         if (ctx->Status == STATUS_PENDING) {
             KeWaitForSingleObject(&ctx->Event, Executive, KernelMode, false, nullptr);
@@ -159,7 +159,7 @@ fail:
 }
 
 NTSTATUS read_linear(set_pdo* pdo, PIRP Irp, bool* no_complete) {
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     uint64_t offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Read.Length;
 
@@ -170,11 +170,11 @@ NTSTATUS read_linear(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             NTSTATUS Status;
 
             if (offset + length < (pdo->child_list[i]->disk_info.data_size * 512) || i == pdo->array_info.raid_disks - 1) {
-                auto c = pdo->child_list[i];
+                set_child* c = pdo->child_list[i];
 
                 IoCopyCurrentIrpStackLocationToNext(Irp);
 
-                auto IrpSp2 = IoGetNextIrpStackLocation(Irp);
+                PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(Irp);
 
                 IrpSp2->FileObject = pdo->child_list[i]->fileobj;
                 IrpSp2->Parameters.Read.ByteOffset.QuadPart = offset + (c->disk_info.data_offset * 512);
@@ -202,18 +202,18 @@ NTSTATUS read_linear(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 }
 
 NTSTATUS write_linear(set_pdo* pdo, PIRP Irp, bool* no_complete) {
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     uint64_t offset = IrpSp->Parameters.Write.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Write.Length;
 
     for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
         if (offset < (pdo->child_list[i]->disk_info.data_size * 512)) {
             if (offset + length < (pdo->child_list[i]->disk_info.data_size * 512) || i == pdo->array_info.raid_disks - 1) {
-                auto c = pdo->child_list[i];
+                set_child* c = pdo->child_list[i];
 
                 IoCopyCurrentIrpStackLocationToNext(Irp);
 
-                auto IrpSp2 = IoGetNextIrpStackLocation(Irp);
+                PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(Irp);
 
                 IrpSp2->FileObject = pdo->child_list[i]->fileobj;
                 IrpSp2->Parameters.Write.ByteOffset.QuadPart = offset + (c->disk_info.data_offset * 512);

@@ -107,7 +107,7 @@ void stop_serial_logger() {
 }
 
 static NTSTATUS __stdcall dbg_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
-    auto context = (logger_context*)ctx;
+    logger_context* context = (logger_context*)ctx;
 
     context->iosb = Irp->IoStatus;
     KeSetEvent(&context->Event, 0, FALSE);
@@ -121,7 +121,7 @@ void log(const char* func, const char* msg, ...) {
     PIO_STACK_LOCATION IrpSp;
 
     size_t buf_size = 1024;
-    auto buf2 = (char*)ExAllocatePoolWithTag(NonPagedPool, buf_size, ALLOC_TAG);
+    char* buf2 = (char*)ExAllocatePoolWithTag(NonPagedPool, buf_size, ALLOC_TAG);
 
     if (!buf2) {
         DbgPrint("Couldn't allocate buffer in debug_message\n");
@@ -129,12 +129,12 @@ void log(const char* func, const char* msg, ...) {
     }
 
     _snprintf(buf2, buf_size, "%p:%s:", PsGetCurrentThread(), func);
-    auto prefix_size = strlen(buf2);
+    size_t prefix_size = strlen(buf2);
     char* buf = &buf2[prefix_size];
 
     va_list ap;
     va_start(ap, msg);
-    auto retlen = _vsnprintf(buf, buf_size - prefix_size, msg, ap);
+    int retlen = _vsnprintf(buf, buf_size - prefix_size, msg, ap);
 
     if (retlen < 0) {
         DbgPrint("vsnprintf encoding error\n");
@@ -146,7 +146,7 @@ void log(const char* func, const char* msg, ...) {
     if ((size_t)retlen > buf_size - prefix_size) { // data truncated
         buf_size = retlen + prefix_size + 1;
 
-        auto buf3 = (char*)ExAllocatePoolWithTag(NonPagedPool, buf_size, ALLOC_TAG);
+        char* buf3 = (char*)ExAllocatePoolWithTag(NonPagedPool, buf_size, ALLOC_TAG);
         if (!buf3) {
             DbgPrint("Out of memory.\n");
             va_end(ap);
@@ -176,7 +176,7 @@ void log(const char* func, const char* msg, ...) {
 
     ExAcquireResourceSharedLite(&logger->log_lock, true);
 
-    auto length = (uint32_t)strlen(buf2);
+    uint32_t length = (uint32_t)strlen(buf2);
 
     LARGE_INTEGER offset;
     offset.u.LowPart = 0;

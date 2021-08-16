@@ -37,7 +37,7 @@ struct io_context {
 };
 
 static NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
-    auto context = (io_context*)ctx;
+    io_context* context = (io_context*)ctx;
 
     context->iosb = Irp->IoStatus;
     KeSetEvent(&context->Event, 0, FALSE);
@@ -160,7 +160,7 @@ static NTSTATUS set_read(set_device* set, PIRP Irp, bool* no_complete) {
     if (!set->pdo->loaded)
         return STATUS_DEVICE_NOT_READY;
 
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
     if (IrpSp->Parameters.Read.ByteOffset.QuadPart < 0) {
         WARN("read start is negative\n");
@@ -252,7 +252,7 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
 
     InitializeListHead(&ctxs);
 
-    auto valid = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, sector_align(pdo->array_info.chunksize, 32) / 8, ALLOC_TAG);
+    uint8_t* valid = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, sector_align(pdo->array_info.chunksize, 32) / 8, ALLOC_TAG);
     if (!valid) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -270,13 +270,13 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
     }
 
     {
-        auto parity = get_parity_volume(pdo, pc->offset);
+        uint32_t parity = get_parity_volume(pdo, pc->offset);
         uint32_t stripe = get_physical_stripe(pdo, 0, parity);
 
         for (uint32_t i = 0; i < data_disks; i++) {
             ULONG index;
             io_context* last = nullptr;
-            auto runlength = RtlFindFirstRunClear(&valid_bmp, &index);
+            ULONG runlength = RtlFindFirstRunClear(&valid_bmp, &index);
 
             while (runlength != 0) {
                 for (uint32_t j = index; j < index + runlength; j++) {
@@ -286,7 +286,7 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
                         if (last && last->stripe_end == stripe_start)
                             last->stripe_end += 512;
                         else {
-                            auto last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
+                            io_context* last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
                             if (!last) {
                                 Status = STATUS_INSUFFICIENT_RESOURCES;
                                 goto end;
@@ -343,7 +343,7 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
             while (le != &ctxs) {
                 io_context* ctx = CONTAINING_RECORD(le, io_context, list_entry);
 
-                auto IrpSp = IoGetNextIrpStackLocation(ctx->Irp);
+                PIO_STACK_LOCATION IrpSp = IoGetNextIrpStackLocation(ctx->Irp);
                 IrpSp->MajorFunction = IRP_MJ_READ;
 
                 ctx->mdl = IoAllocateMdl(ctx->va2, (ULONG)(ctx->stripe_end - ctx->stripe_start), false, false, nullptr);
@@ -422,7 +422,7 @@ void flush_chunks(set_pdo* pdo) {
     ExAcquireResourceExclusiveLite(&pdo->partial_chunks_lock, true);
 
     while (!IsListEmpty(&pdo->partial_chunks)) {
-        auto pc = CONTAINING_RECORD(RemoveHeadList(&pdo->partial_chunks), partial_chunk, list_entry);
+        partial_chunk* pc = CONTAINING_RECORD(RemoveHeadList(&pdo->partial_chunks), partial_chunk, list_entry);
 
         flush_partial_chunk(pdo, pc);
 
@@ -433,7 +433,7 @@ void flush_chunks(set_pdo* pdo) {
 }
 
 void __stdcall flush_thread(void* context) {
-    auto sd = (set_pdo*)context;
+    set_pdo* sd = (set_pdo*)context;
 
     LARGE_INTEGER due_time;
 
@@ -479,7 +479,7 @@ NTSTATUS add_partial_chunk(set_pdo* pdo, uint64_t offset, uint32_t length, void*
     LIST_ENTRY* le = pdo->partial_chunks.Flink;
 
     while (le != &pdo->partial_chunks) {
-        auto pc = CONTAINING_RECORD(le, partial_chunk, list_entry);
+        partial_chunk* pc = CONTAINING_RECORD(le, partial_chunk, list_entry);
 
         if (pc->offset == chunk_offset) {
             RtlCopyMemory(pc->data + offset - chunk_offset, data, length);

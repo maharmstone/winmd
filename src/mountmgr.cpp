@@ -26,7 +26,7 @@ static char get_drive_letter2(MOUNTMGR_MOUNT_POINTS* points) {
     TRACE("%u points\n", points->NumberOfMountPoints);
 
     for (ULONG i = 0; i < points->NumberOfMountPoints; i++) {
-        const auto& mmp = points->MountPoints[i];
+        const MOUNTMGR_MOUNT_POINT& mmp = points->MountPoints[i];
         WCHAR* symlink = (WCHAR*)((uint8_t*)points + mmp.SymbolicLinkNameOffset);
 
         TRACE("point %u\n", i);
@@ -46,7 +46,7 @@ char get_drive_letter(HANDLE h, const UNICODE_STRING& name) {
     USHORT mmmp_len = sizeof(MOUNTMGR_MOUNT_POINT) + name.Length;
     char ret;
 
-    auto mmmp = (MOUNTMGR_MOUNT_POINT*)ExAllocatePoolWithTag(NonPagedPool, mmmp_len, ALLOC_TAG);
+    MOUNTMGR_MOUNT_POINT* mmmp = (MOUNTMGR_MOUNT_POINT*)ExAllocatePoolWithTag(NonPagedPool, mmmp_len, ALLOC_TAG);
 
     if (!mmmp) {
         ERR("out of memory\n");
@@ -67,7 +67,7 @@ char get_drive_letter(HANDLE h, const UNICODE_STRING& name) {
                                    mmmp, mmmp_len, &points, sizeof(points));
 
     if (Status == STATUS_BUFFER_OVERFLOW && points.Size > 0) {
-        auto points2 = (MOUNTMGR_MOUNT_POINTS*)ExAllocatePoolWithTag(NonPagedPool, points.Size, ALLOC_TAG);
+        MOUNTMGR_MOUNT_POINTS* points2 = (MOUNTMGR_MOUNT_POINTS*)ExAllocatePoolWithTag(NonPagedPool, points.Size, ALLOC_TAG);
 
         if (!points2) {
             ERR("out of memory\n");
@@ -104,7 +104,7 @@ NTSTATUS remove_drive_letter(HANDLE h, char c) {
     NTSTATUS Status;
     USHORT mmmp_len = sizeof(MOUNTMGR_MOUNT_POINT) + sizeof(drive_letter_prefix) + sizeof(WCHAR);
 
-    auto mmmp = (MOUNTMGR_MOUNT_POINT*)ExAllocatePoolWithTag(NonPagedPool, mmmp_len, ALLOC_TAG);
+    MOUNTMGR_MOUNT_POINT* mmmp = (MOUNTMGR_MOUNT_POINT*)ExAllocatePoolWithTag(NonPagedPool, mmmp_len, ALLOC_TAG);
 
     if (!mmmp) {
         ERR("out of memory\n");
@@ -116,7 +116,7 @@ NTSTATUS remove_drive_letter(HANDLE h, char c) {
     mmmp->SymbolicLinkNameOffset = sizeof(MOUNTMGR_MOUNT_POINT);
     mmmp->SymbolicLinkNameLength = sizeof(drive_letter_prefix) + sizeof(WCHAR);
 
-    auto symlink = (WCHAR*)((uint8_t*)mmmp + mmmp->SymbolicLinkNameOffset);
+    WCHAR* symlink = (WCHAR*)((uint8_t*)mmmp + mmmp->SymbolicLinkNameOffset);
 
     RtlCopyMemory(symlink, drive_letter_prefix, sizeof(drive_letter_prefix) - sizeof(WCHAR));
     symlink[(sizeof(drive_letter_prefix) / sizeof(WCHAR)) - 1] = c;
@@ -129,7 +129,7 @@ NTSTATUS remove_drive_letter(HANDLE h, char c) {
                                    mmmp, mmmp_len, &points, sizeof(points));
 
     if (Status == STATUS_BUFFER_OVERFLOW && points.Size > 0) {
-        auto points2 = (MOUNTMGR_MOUNT_POINTS*)ExAllocatePoolWithTag(NonPagedPool, points.Size, ALLOC_TAG);
+        MOUNTMGR_MOUNT_POINTS* points2 = (MOUNTMGR_MOUNT_POINTS*)ExAllocatePoolWithTag(NonPagedPool, points.Size, ALLOC_TAG);
         if (!points2) {
             ERR("out of memory\n");
             ExFreePool(mmmp);

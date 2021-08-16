@@ -27,7 +27,7 @@ extern PDRIVER_OBJECT drvobj;
 static NTSTATUS set_query_hardware_ids(PIRP Irp) {
     static const char16_t ids[] = u"WinMDVolume\0";
 
-    auto out = (char16_t*)ExAllocatePoolWithTag(PagedPool, sizeof(ids), ALLOC_TAG);
+    char16_t* out = (char16_t*)ExAllocatePoolWithTag(PagedPool, sizeof(ids), ALLOC_TAG);
     if (!out) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -66,7 +66,7 @@ static NTSTATUS query_device_ids(mdraid_array_info* array_info, PIRP Irp) {
     }
     *noff = 0;
 
-    auto out = (char16_t*)ExAllocatePoolWithTag(PagedPool, sizeof(pref) + (36 * sizeof(char16_t)), ALLOC_TAG);
+    char16_t* out = (char16_t*)ExAllocatePoolWithTag(PagedPool, sizeof(pref) + (36 * sizeof(char16_t)), ALLOC_TAG);
     if (!out) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -82,7 +82,7 @@ static NTSTATUS query_device_ids(mdraid_array_info* array_info, PIRP Irp) {
 static NTSTATUS pdo_pnp(set_pdo* pdo, PIRP Irp) {
     TRACE("(%p, %p)\n", pdo, Irp);
 
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
     TRACE("PNP message %x\n", IrpSp->MinorFunction);
 
@@ -111,8 +111,8 @@ static NTSTATUS pdo_pnp(set_pdo* pdo, PIRP Irp) {
 }
 
 static NTSTATUS query_capabilities(PIRP Irp) {
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
-    auto dc = IrpSp->Parameters.DeviceCapabilities.Capabilities;
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PDEVICE_CAPABILITIES dc = IrpSp->Parameters.DeviceCapabilities.Capabilities;
 
     dc->UniqueID = true;
     dc->SilentInstall = true;
@@ -123,7 +123,7 @@ static NTSTATUS query_capabilities(PIRP Irp) {
 static NTSTATUS query_hardware_ids(PIRP Irp) {
     static const char16_t ids[] = u"ROOT\\winmd\0";
 
-    auto out = (char16_t*)ExAllocatePoolWithTag(PagedPool, sizeof(ids), ALLOC_TAG);
+    char16_t* out = (char16_t*)ExAllocatePoolWithTag(PagedPool, sizeof(ids), ALLOC_TAG);
     if (!out) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -152,7 +152,7 @@ static NTSTATUS query_device_relations(PIRP Irp) {
     }
 
     ULONG drsize = offsetof(DEVICE_RELATIONS, Objects[0]) + (num_children * sizeof(PDEVICE_OBJECT));
-    auto dr = (DEVICE_RELATIONS*)ExAllocatePoolWithTag(PagedPool, drsize, ALLOC_TAG);
+    DEVICE_RELATIONS* dr = (DEVICE_RELATIONS*)ExAllocatePoolWithTag(PagedPool, drsize, ALLOC_TAG);
 
     if (!dr) {
         ERR("out of memory\n");
@@ -167,7 +167,7 @@ static NTSTATUS query_device_relations(PIRP Irp) {
         LIST_ENTRY* le = dev_list.Flink;
 
         while (le != &dev_list) {
-            auto sd = CONTAINING_RECORD(le, set_pdo, list_entry);
+            set_pdo* sd = CONTAINING_RECORD(le, set_pdo, list_entry);
 
             ObReferenceObject(sd->pdo);
             dr->Objects[i] = sd->pdo;
@@ -185,7 +185,7 @@ static NTSTATUS query_device_relations(PIRP Irp) {
 }
 
 static NTSTATUS control_pnp(control_device* control, PIRP Irp, bool* no_complete) {
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
     TRACE("(%p, %p)\n", control, Irp);
     TRACE("IrpSp->MinorFunction = %x\n", IrpSp->MinorFunction);
@@ -234,7 +234,7 @@ static NTSTATUS control_pnp(control_device* control, PIRP Irp, bool* no_complete
 }
 
 static NTSTATUS set_pnp(set_device* set, PIRP Irp, bool* no_complete) {
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
     TRACE("(%p, %p)\n", set, Irp);
 
@@ -300,7 +300,7 @@ NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
             break;
 
         default: {
-            auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+            PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
             switch (IrpSp->MinorFunction) {
                 case IRP_MN_SURPRISE_REMOVAL:
@@ -355,7 +355,7 @@ static NTSTATUS add_set_device(set_pdo* pdo) {
     RtlCopyMemory(volname.Buffer, device_prefix, sizeof(device_prefix) - sizeof(char16_t));
 
     {
-        auto p = &volname.Buffer[(sizeof(device_prefix) / sizeof(char16_t)) - 1];
+        WCHAR* p = &volname.Buffer[(sizeof(device_prefix) / sizeof(char16_t)) - 1];
 
         for (uint8_t i = 0; i < 16; i++) {
             *p = hex_digit((pdo->array_info.set_uuid[i] & 0xf0) >> 4); p++;
@@ -424,7 +424,7 @@ NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT Physica
     LIST_ENTRY* le = dev_list.Flink;
 
     while (le != &dev_list) {
-        auto sd2 = CONTAINING_RECORD(le, set_pdo, list_entry);
+        set_pdo* sd2 = CONTAINING_RECORD(le, set_pdo, list_entry);
 
         if (sd2->pdo == PhysicalDeviceObject) {
             sd = sd2;

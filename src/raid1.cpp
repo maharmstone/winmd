@@ -31,7 +31,7 @@ NTSTATUS read_raid1(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     pdo->read_device++;
 
-    auto c = pdo->child_list[pdo->read_device % pdo->array_info.raid_disks];
+    set_child* c = pdo->child_list[pdo->read_device % pdo->array_info.raid_disks];
 
     IoCopyCurrentIrpStackLocationToNext(Irp);
 
@@ -50,7 +50,7 @@ NTSTATUS read_raid1(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 }
 
 static NTSTATUS __stdcall io_completion_raid1(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
-    auto context = (io_context_raid1*)ctx;
+    io_context_raid1* context = (io_context_raid1*)ctx;
 
     context->iosb = Irp->IoStatus;
     KeSetEvent(&context->Event, 0, FALSE);
@@ -61,9 +61,9 @@ static NTSTATUS __stdcall io_completion_raid1(PDEVICE_OBJECT, PIRP Irp, PVOID ct
 NTSTATUS write_raid1(set_pdo* pdo, PIRP Irp) {
     NTSTATUS Status;
 
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
-    auto ctxs = (io_context_raid1*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid1) * pdo->array_info.raid_disks, ALLOC_TAG);
+    io_context_raid1* ctxs = (io_context_raid1*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid1) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -80,7 +80,7 @@ NTSTATUS write_raid1(set_pdo* pdo, PIRP Irp) {
             goto end;
         }
 
-        auto IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
+        PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
         IrpSp2->MajorFunction = IRP_MJ_WRITE;
         IrpSp2->FileObject = pdo->child_list[i]->fileobj;
 

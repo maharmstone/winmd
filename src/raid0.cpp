@@ -31,7 +31,7 @@ struct io_context_raid0 {
 };
 
 static NTSTATUS __stdcall io_completion_raid0(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
-    auto context = (io_context_raid0*)ctx;
+    io_context_raid0* context = (io_context_raid0*)ctx;
 
     context->iosb = Irp->IoStatus;
     KeSetEvent(&context->Event, 0, FALSE);
@@ -40,7 +40,7 @@ static NTSTATUS __stdcall io_completion_raid0(PDEVICE_OBJECT, PIRP Irp, PVOID ct
 }
 
 NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     uint64_t offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Read.Length;
     bool mdl_locked = true;
@@ -54,11 +54,11 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     uint64_t end_chunk = (offset + length - 1) / (pdo->array_info.chunksize * 512);
 
     if (start_chunk == end_chunk) { // small reads, on one device
-        auto c = pdo->child_list[start_chunk % pdo->array_info.raid_disks];
+        set_child* c = pdo->child_list[start_chunk % pdo->array_info.raid_disks];
 
         IoCopyCurrentIrpStackLocationToNext(Irp);
 
-        auto IrpSp2 = IoGetNextIrpStackLocation(Irp);
+        PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(Irp);
 
         uint64_t start = (start_chunk / pdo->array_info.raid_disks) * (pdo->array_info.chunksize * 512);
 
@@ -86,7 +86,7 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks, &startoff, &startoffstripe);
     get_raid0_offset(offset + length - 1, stripe_length, pdo->array_info.raid_disks, &endoff, &endoffstripe);
 
-    auto ctxs = (io_context_raid0*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid0) * pdo->array_info.raid_disks, ALLOC_TAG);
+    io_context_raid0* ctxs = (io_context_raid0*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid0) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -122,7 +122,7 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                 goto end;
             }
 
-            auto IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
+            PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
             IrpSp2->MajorFunction = IRP_MJ_READ;
 
             ctxs[i].mdl = IoAllocateMdl(nullptr, (ULONG)(ctxs[i].stripe_end - ctxs[i].stripe_start), false, false, nullptr);
@@ -196,7 +196,7 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                 ctxs[i].pfnp = ctxs[i].pfns = MmGetMdlPfnArray(ctxs[i].mdl);
         }
 
-        auto src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
+        PPFN_NUMBER src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
 
         while (pos < length) {
             uint32_t len, pages;
@@ -255,7 +255,7 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     }
 
     if (tmpbuf) {
-        auto dest = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+        PVOID dest = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 
         RtlCopyMemory(dest, tmpbuf + skip_first, length - skip_first);
     }
@@ -284,7 +284,7 @@ end:
 }
 
 NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     uint64_t offset = IrpSp->Parameters.Write.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Write.Length;
     bool mdl_locked = true;
@@ -300,11 +300,11 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     uint64_t end_chunk = (offset + length - 1) / (pdo->array_info.chunksize * 512);
 
     if (start_chunk == end_chunk) { // small write, on one device
-        auto c = pdo->child_list[start_chunk % pdo->array_info.raid_disks];
+        set_child* c = pdo->child_list[start_chunk % pdo->array_info.raid_disks];
 
         IoCopyCurrentIrpStackLocationToNext(Irp);
 
-        auto IrpSp2 = IoGetNextIrpStackLocation(Irp);
+        PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(Irp);
 
         uint64_t start = (start_chunk / pdo->array_info.raid_disks) * (pdo->array_info.chunksize * 512);
 
@@ -356,10 +356,10 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             goto end2;
         }
 
-        auto IrpSp2 = IoGetNextIrpStackLocation(first_bit.Irp);
+        PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(first_bit.Irp);
         IrpSp2->MajorFunction = IRP_MJ_WRITE;
 
-        auto addr = MmGetMdlVirtualAddress(Irp->MdlAddress);
+        PVOID addr = MmGetMdlVirtualAddress(Irp->MdlAddress);
 
         first_bit.mdl = IoAllocateMdl(addr, skip_first, false, false, nullptr);
         if (!first_bit.mdl) {
@@ -430,7 +430,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                 goto end;
             }
 
-            auto IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
+            PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
             IrpSp2->MajorFunction = IRP_MJ_WRITE;
 
             ctxs[i].mdl = IoAllocateMdl(nullptr, (ULONG)(ctxs[i].stripe_end - ctxs[i].stripe_start), false, false, nullptr);
@@ -475,7 +475,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
         MmBuildMdlForNonPagedPool(tmpmdl);
 
-        auto src = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+        PVOID src = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 
         RtlCopyMemory(tmpbuf, (uint8_t*)src + skip_first, length);
     }
@@ -490,7 +490,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                 ctxs[i].pfnp = ctxs[i].pfns = MmGetMdlPfnArray(ctxs[i].mdl);
         }
 
-        auto src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
+        PPFN_NUMBER src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
 
         while (pos < length) {
             uint32_t len, pages;

@@ -33,7 +33,7 @@ struct io_context_raid10 {
 };
 
 static NTSTATUS __stdcall io_completion_raid10(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
-    auto context = (io_context_raid10*)ctx;
+    io_context_raid10* context = (io_context_raid10*)ctx;
 
     context->iosb = Irp->IoStatus;
     KeSetEvent(&context->Event, 0, FALSE);
@@ -42,7 +42,7 @@ static NTSTATUS __stdcall io_completion_raid10(PDEVICE_OBJECT, PIRP Irp, PVOID c
 }
 
 static NTSTATUS read_raid10_odd(set_pdo* pdo, PIRP Irp, bool* no_complete) {
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     bool mdl_locked = true;
     uint8_t near = pdo->array_info.layout & 0xff;
     uint32_t stripe_length = pdo->array_info.chunksize * 512;
@@ -58,11 +58,11 @@ static NTSTATUS read_raid10_odd(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     if (start_chunk == end_chunk) { // small reads, on one device
         uint64_t chunk = (start_chunk * near) + (pdo->read_device % near);
-        auto c = pdo->child_list[chunk % pdo->array_info.raid_disks];
+        set_child* c = pdo->child_list[chunk % pdo->array_info.raid_disks];
 
         IoCopyCurrentIrpStackLocationToNext(Irp);
 
-        auto IrpSp2 = IoGetNextIrpStackLocation(Irp);
+        PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(Irp);
 
         uint64_t start = (chunk / pdo->array_info.raid_disks) * stripe_length;
 
@@ -82,7 +82,7 @@ static NTSTATUS read_raid10_odd(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     offset -= skip_first;
     length += skip_first;
 
-    auto ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks, ALLOC_TAG);
+    io_context_raid10* ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -153,7 +153,7 @@ static NTSTATUS read_raid10_odd(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                 goto end;
             }
 
-            auto IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
+            PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
             IrpSp2->MajorFunction = IRP_MJ_READ;
 
             ctxs[i].mdl = IoAllocateMdl(nullptr, (ULONG)(ctxs[i].stripe_end - ctxs[i].stripe_start), false, false, nullptr);
@@ -168,7 +168,7 @@ static NTSTATUS read_raid10_odd(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             ctxs[i].Irp->MdlAddress = ctxs[i].mdl;
 
             {
-                auto pfns = MmGetMdlPfnArray(ctxs[i].mdl);
+                PPFN_NUMBER pfns = MmGetMdlPfnArray(ctxs[i].mdl);
 
                 uint32_t pages = sector_align((uint32_t)(ctxs[i].stripe_end - ctxs[i].stripe_start), PAGE_SIZE) / PAGE_SIZE;
 
@@ -239,7 +239,7 @@ static NTSTATUS read_raid10_odd(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             }
         }
 
-        auto src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
+        PPFN_NUMBER src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
 
         while (pos < length) {
             uint32_t disk_num = chunk % pdo->array_info.raid_disks;
@@ -301,7 +301,7 @@ static NTSTATUS read_raid10_odd(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     }
 
     if (tmpbuf) {
-        auto dest = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+        PVOID dest = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 
         RtlCopyMemory(dest, tmpbuf + skip_first, length - skip_first);
     }
@@ -336,7 +336,7 @@ end:
 }
 
 static NTSTATUS read_raid10_offset(set_pdo* pdo, PIRP Irp, bool* no_complete) {
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     bool mdl_locked = true;
     uint8_t far = (pdo->array_info.layout >> 8) & 0xff;
     uint64_t offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
@@ -350,11 +350,11 @@ static NTSTATUS read_raid10_offset(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     if (start_chunk == end_chunk) { // small reads, on one device
         uint64_t start = (((start_chunk / pdo->array_info.raid_disks) * far) + far_offset) * stripe_length;
-        auto c = pdo->child_list[(start_chunk + far_offset) % pdo->array_info.raid_disks];
+        set_child* c = pdo->child_list[(start_chunk + far_offset) % pdo->array_info.raid_disks];
 
         IoCopyCurrentIrpStackLocationToNext(Irp);
 
-        auto IrpSp2 = IoGetNextIrpStackLocation(Irp);
+        PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(Irp);
 
         start += offset % stripe_length;
         start += c->disk_info.data_offset * 512;
@@ -380,7 +380,7 @@ static NTSTATUS read_raid10_offset(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks, &startoff, &startoffstripe);
     get_raid0_offset(offset + length - 1, stripe_length, pdo->array_info.raid_disks, &endoff, &endoffstripe);
 
-    auto ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks, ALLOC_TAG);
+    io_context_raid10* ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -422,7 +422,7 @@ static NTSTATUS read_raid10_offset(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             }
 
             if (length - pos > pdo->array_info.raid_disks * stripe_length) {
-                auto skip = (uint32_t)(((length - pos) / (pdo->array_info.raid_disks * stripe_length)) - 1);
+                uint32_t skip = (uint32_t)(((length - pos) / (pdo->array_info.raid_disks * stripe_length)) - 1);
 
                 for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
                     ctxs[i].stripe_end += skip * far * stripe_length;
@@ -455,7 +455,7 @@ static NTSTATUS read_raid10_offset(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].stripe_end != ctxs[i].stripe_start) {
-            auto c = pdo->child_list[(i + far_offset) % pdo->array_info.raid_disks];
+            set_child* c = pdo->child_list[(i + far_offset) % pdo->array_info.raid_disks];
 
             ctxs[i].Irp = IoAllocateIrp(c->device->StackSize, false);
 
@@ -465,7 +465,7 @@ static NTSTATUS read_raid10_offset(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                 goto end;
             }
 
-            auto IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
+            PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
             IrpSp2->MajorFunction = IRP_MJ_READ;
 
             ctxs[i].mdl = IoAllocateMdl(nullptr, (ULONG)(ctxs[i].stripe_end - ctxs[i].stripe_start), false, false, nullptr);
@@ -565,7 +565,7 @@ static NTSTATUS read_raid10_offset(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                 ctxs[i].pfnp = ctxs[i].pfns = MmGetMdlPfnArray(ctxs[i].mdl);
         }
 
-        auto src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
+        PPFN_NUMBER src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
 
         while (pos < length) {
             if (pos == 0) {
@@ -676,7 +676,7 @@ static NTSTATUS read_raid10_offset(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     }
 
     if (tmpbuf) {
-        auto dest = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+        PVOID dest = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 
         RtlCopyMemory(dest, tmpbuf + skip_first, length - skip_first);
     }
@@ -712,7 +712,7 @@ end:
 
 NTSTATUS read_raid10(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     NTSTATUS Status;
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     bool mdl_locked = true;
     uint8_t near, far;
     bool is_offset;
@@ -759,11 +759,11 @@ NTSTATUS read_raid10(set_pdo* pdo, PIRP Irp, bool* no_complete) {
         uint32_t far_shift = (pdo->read_device % (far * near)) / near;
         uint32_t disk_num = ((near * (start_chunk % (pdo->array_info.raid_disks / near))) + near_shift + (far_shift * near)) % pdo->array_info.raid_disks;
 
-        auto c = pdo->child_list[disk_num];
+        set_child* c = pdo->child_list[disk_num];
 
         IoCopyCurrentIrpStackLocationToNext(Irp);
 
-        auto IrpSp2 = IoGetNextIrpStackLocation(Irp);
+        PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(Irp);
 
         uint64_t start = (start_chunk / (pdo->array_info.raid_disks / near)) * (pdo->array_info.chunksize * 512);
 
@@ -833,7 +833,7 @@ NTSTATUS read_raid10(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                 goto end;
             }
 
-            auto IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
+            PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
             IrpSp2->MajorFunction = IRP_MJ_READ;
 
             ctxs[i].mdl = IoAllocateMdl(nullptr, (ULONG)(ctxs[i].stripe_end - ctxs[i].stripe_start), false, false, nullptr);
@@ -911,7 +911,7 @@ NTSTATUS read_raid10(set_pdo* pdo, PIRP Irp, bool* no_complete) {
                 ctxs[i].pfnp = ctxs[i].pfns = MmGetMdlPfnArray(ctxs[i].mdl);
         }
 
-        auto src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
+        PPFN_NUMBER src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
 
         while (pos < length) {
             uint32_t len, pages;
@@ -970,7 +970,7 @@ NTSTATUS read_raid10(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     }
 
     if (tmpbuf) {
-        auto dest = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+        PVOID dest = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 
         RtlCopyMemory(dest, tmpbuf + skip_first, length - skip_first);
     }
@@ -1002,7 +1002,7 @@ end2:
 }
 
 static NTSTATUS write_raid10_odd(set_pdo* pdo, PIRP Irp) {
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     bool mdl_locked = true;
     uint8_t near = pdo->array_info.layout & 0xff;
     uint32_t stripe_length = pdo->array_info.chunksize * 512;
@@ -1016,7 +1016,7 @@ static NTSTATUS write_raid10_odd(set_pdo* pdo, PIRP Irp) {
 
     uint32_t skip_first = offset % PAGE_SIZE ? (PAGE_SIZE - (offset % PAGE_SIZE)) : 0;
 
-    auto ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks, ALLOC_TAG);
+    io_context_raid10* ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -1045,14 +1045,14 @@ static NTSTATUS write_raid10_odd(set_pdo* pdo, PIRP Irp) {
     }
 
     if (skip_first != 0) {
-        auto addr = MmGetMdlVirtualAddress(Irp->MdlAddress);
+        PVOID addr = MmGetMdlVirtualAddress(Irp->MdlAddress);
 
         uint64_t chunk = start_chunk * near;
 
         for (uint32_t i = 0; i < near; i++) {
             uint32_t disk_num = (chunk + i) % pdo->array_info.raid_disks;
 
-            auto last = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
+            io_context_raid10* last = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
             if (!last) {
                 Status = STATUS_INSUFFICIENT_RESOURCES;
                 goto end;
@@ -1083,7 +1083,7 @@ static NTSTATUS write_raid10_odd(set_pdo* pdo, PIRP Irp) {
 
             InsertTailList(&first_bits, &last->list_entry);
 
-            auto IrpSp2 = IoGetNextIrpStackLocation(last->Irp);
+            PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(last->Irp);
             IrpSp2->MajorFunction = IRP_MJ_WRITE;
 
             last->mdl = IoAllocateMdl(addr, skip_first, false, false, nullptr);
@@ -1156,7 +1156,7 @@ static NTSTATUS write_raid10_odd(set_pdo* pdo, PIRP Irp) {
                     goto end;
                 }
 
-                auto IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
+                PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
                 IrpSp2->MajorFunction = IRP_MJ_WRITE;
 
                 ctxs[i].mdl = IoAllocateMdl(nullptr, (ULONG)(ctxs[i].stripe_end - ctxs[i].stripe_start), false, false, nullptr);
@@ -1201,7 +1201,7 @@ static NTSTATUS write_raid10_odd(set_pdo* pdo, PIRP Irp) {
 
             MmBuildMdlForNonPagedPool(tmpmdl);
 
-            auto data = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+            PVOID data = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 
             RtlCopyMemory(tmpbuf, (uint8_t*)data + skip_first, length);
         }
@@ -1216,7 +1216,7 @@ static NTSTATUS write_raid10_odd(set_pdo* pdo, PIRP Irp) {
                     ctxs[i].pfns = ctxs[i].pfnp = MmGetMdlPfnArray(ctxs[i].mdl);
             }
 
-            auto src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
+            PPFN_NUMBER src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
 
             while (pos < length) {
                 uint32_t len, pages;
@@ -1259,7 +1259,7 @@ static NTSTATUS write_raid10_odd(set_pdo* pdo, PIRP Irp) {
         LIST_ENTRY* le = first_bits.Flink;
 
         while (le != &first_bits) {
-            auto fb = CONTAINING_RECORD(le, io_context_raid10, list_entry);
+            io_context_raid10* fb = CONTAINING_RECORD(le, io_context_raid10, list_entry);
 
             fb->Status = IoCallDriver(fb->sc->device, fb->Irp);
             if (!NT_SUCCESS(fb->Status))
@@ -1283,7 +1283,7 @@ static NTSTATUS write_raid10_odd(set_pdo* pdo, PIRP Irp) {
 
     if (skip_first != 0) {
         while (!IsListEmpty(&first_bits)) {
-            auto fb = CONTAINING_RECORD(RemoveHeadList(&first_bits), io_context_raid10, list_entry);
+            io_context_raid10* fb = CONTAINING_RECORD(RemoveHeadList(&first_bits), io_context_raid10, list_entry);
 
             if (fb->Status == STATUS_PENDING) {
                 KeWaitForSingleObject(&fb->Event, Executive, KernelMode, false, nullptr);
@@ -1356,9 +1356,9 @@ static NTSTATUS write_raid10_offset_partial(set_pdo* pdo, LIST_ENTRY* ctxs, uint
         uint64_t stripe_start = ((startoff - (startoff % stripe_length)) * far) + (i == startoffstripe ? (startoff % stripe_length) : 0);
         uint32_t len = min(length - pos, i == startoffstripe ? (stripe_length - (startoff % stripe_length)) : stripe_length);
 
-        auto c = pdo->child_list[i];
+        set_child* c = pdo->child_list[i];
 
-        auto ctxa = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
+        io_context_raid10* ctxa = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
         if (!ctxa) {
             ERR("out of memory\n");
             return STATUS_INSUFFICIENT_RESOURCES;
@@ -1405,15 +1405,15 @@ static NTSTATUS write_raid10_offset_partial(set_pdo* pdo, LIST_ENTRY* ctxs, uint
         if ((len + mdl_offset) % PAGE_SIZE != 0)
             pages++;
 
-        auto ctx_pfns = MmGetMdlPfnArray(ctxa->mdl);
+        PPFN_NUMBER ctx_pfns = MmGetMdlPfnArray(ctxa->mdl);
 
         RtlCopyMemory(ctx_pfns, pfns, pages * sizeof(PFN_NUMBER));
         pfns = &pfns[len / PAGE_SIZE];
 
         for (uint32_t k = 1; k < far; k++) {
-            auto c = pdo->child_list[(i + 1) % pdo->array_info.raid_disks];
+            set_child* c = pdo->child_list[(i + 1) % pdo->array_info.raid_disks];
 
-            auto ctxb = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
+            io_context_raid10* ctxb = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
             if (!ctxb) {
                 ERR("out of memory\n");
                 return STATUS_INSUFFICIENT_RESOURCES;
@@ -1454,7 +1454,7 @@ static NTSTATUS write_raid10_offset_partial(set_pdo* pdo, LIST_ENTRY* ctxs, uint
 
 static NTSTATUS write_raid10_offset(set_pdo* pdo, PIRP Irp) {
     NTSTATUS Status;
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     bool mdl_locked;
     uint64_t offset = IrpSp->Parameters.Write.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Write.Length;
@@ -1481,7 +1481,7 @@ static NTSTATUS write_raid10_offset(set_pdo* pdo, PIRP Irp) {
 
     InitializeListHead(&ctxs);
 
-    auto src_pfns = MmGetMdlPfnArray(Irp->MdlAddress);
+    PPFN_NUMBER src_pfns = MmGetMdlPfnArray(Irp->MdlAddress);
     uint32_t mdl_offset = Irp->MdlAddress->ByteOffset;
 
     if (offset % full_stripe != 0) {
@@ -1528,7 +1528,7 @@ static NTSTATUS write_raid10_offset(set_pdo* pdo, PIRP Irp) {
         uint64_t stripe_start = (offset / full_stripe) * (stripe_length * far);
         uint32_t len = (length / full_stripe) * (stripe_length * far);
 
-        auto mdlpfns = (PFN_NUMBER**)ExAllocatePoolWithTag(NonPagedPool, sizeof(PFN_NUMBER*) * pdo->array_info.raid_disks, ALLOC_TAG);
+        PFN_NUMBER** mdlpfns = (PFN_NUMBER**)ExAllocatePoolWithTag(NonPagedPool, sizeof(PFN_NUMBER*) * pdo->array_info.raid_disks, ALLOC_TAG);
         if (!mdlpfns) {
             ERR("out of memory\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1536,9 +1536,9 @@ static NTSTATUS write_raid10_offset(set_pdo* pdo, PIRP Irp) {
         }
 
         for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
-            auto c = pdo->child_list[i];
+            set_child* c = pdo->child_list[i];
 
-            auto ctxa = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
+            io_context_raid10* ctxa = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
             if (!ctxa) {
                 ERR("out of memory\n");
                 Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1588,7 +1588,7 @@ static NTSTATUS write_raid10_offset(set_pdo* pdo, PIRP Irp) {
         }
 
         uint32_t pos = 0;
-        auto pfns = src_pfns;
+        PPFN_NUMBER pfns = src_pfns;
         uint32_t stripe_pages = stripe_length / PAGE_SIZE;
 
         while (pos < length) {
@@ -1613,9 +1613,9 @@ static NTSTATUS write_raid10_offset(set_pdo* pdo, PIRP Irp) {
     {
         LIST_ENTRY* le = ctxs.Flink;
         while (le != &ctxs) {
-            auto ctx = CONTAINING_RECORD(le, io_context_raid10, list_entry);
+            io_context_raid10* ctx = CONTAINING_RECORD(le, io_context_raid10, list_entry);
 
-            auto IrpSp = IoGetNextIrpStackLocation(ctx->Irp);
+            PIO_STACK_LOCATION IrpSp = IoGetNextIrpStackLocation(ctx->Irp);
             IrpSp->MajorFunction = IRP_MJ_WRITE;
 
             IrpSp->FileObject = ctx->sc->fileobj;
@@ -1631,7 +1631,7 @@ static NTSTATUS write_raid10_offset(set_pdo* pdo, PIRP Irp) {
     Status = STATUS_SUCCESS;
 
     while (!IsListEmpty(&ctxs)) {
-        auto ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context_raid10, list_entry);
+        io_context_raid10* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context_raid10, list_entry);
 
         if (ctx->Status == STATUS_PENDING) {
             KeWaitForSingleObject(&ctx->Event, Executive, KernelMode, false, nullptr);
@@ -1657,7 +1657,7 @@ end:
         MmUnlockPages(Irp->MdlAddress);
 
     while (!IsListEmpty(&ctxs)) {
-        auto ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context_raid10, list_entry);
+        io_context_raid10* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context_raid10, list_entry);
 
         if (ctx->mdl)
             IoFreeMdl(ctx->mdl);
@@ -1673,7 +1673,7 @@ end:
 
 NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
     NTSTATUS Status;
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
     bool mdl_locked;
     uint8_t* tmpbuf = nullptr;
     PMDL tmpmdl = nullptr;
@@ -1700,7 +1700,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
     uint32_t length = IrpSp->Parameters.Write.Length;
     uint32_t skip_first = offset % PAGE_SIZE ? (PAGE_SIZE - (offset % PAGE_SIZE)) : 0;
 
-    auto ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks * far,
+    io_context_raid10* ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks * far,
                                                           ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
@@ -1730,13 +1730,13 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
     }
 
     if (skip_first != 0) {
-        auto addr = MmGetMdlVirtualAddress(Irp->MdlAddress);
+        PVOID addr = MmGetMdlVirtualAddress(Irp->MdlAddress);
 
         get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks / near, &startoff, &startoffstripe);
 
         for (uint32_t j = 0; j < far; j++) {
             for (uint32_t i = 0; i < near; i++) {
-                auto last = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
+                io_context_raid10* last = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
                 if (!last) {
                     ERR("out of memory\n");
                     Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1767,7 +1767,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
 
                 InsertTailList(&first_bits, &last->list_entry);
 
-                auto IrpSp2 = IoGetNextIrpStackLocation(last->Irp);
+                PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(last->Irp);
                 IrpSp2->MajorFunction = IRP_MJ_WRITE;
 
                 last->mdl = IoAllocateMdl(addr, skip_first, false, false, nullptr);
@@ -1817,7 +1817,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
         }
 
         for (unsigned int i = 0; i < pdo->array_info.raid_disks / near; i++) {
-            auto& ctxa = ctxs[near * far * i];
+            io_context_raid10& ctxa = ctxs[near * far * i];
 
             if (ctxa.stripe_end != ctxa.stripe_start) {
                 ctxa.mdl = IoAllocateMdl(nullptr, (ULONG)(ctxa.stripe_end - ctxa.stripe_start), false, false, nullptr);
@@ -1831,7 +1831,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
 
                 for (unsigned int j = 0; j < near; j++) { // FIXME
                     for (unsigned int k = 0; k < far; k++) {
-                        auto ctx = &ctxs[(near * far * i) + (j * far) + k];
+                        io_context_raid10* ctx = &ctxs[(near * far * i) + (j * far) + k];
                         uint32_t disk_num = ((near * i) + j + (k * near)) % pdo->array_info.raid_disks;
 
                         ctx->Irp = IoAllocateIrp(pdo->child_list[disk_num]->device->StackSize, false);
@@ -1844,7 +1844,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
 
                         ctx->sc = pdo->child_list[disk_num];
 
-                        auto IrpSp2 = IoGetNextIrpStackLocation(ctx->Irp);
+                        PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(ctx->Irp);
                         IrpSp2->MajorFunction = IRP_MJ_WRITE;
 
                         ctx->Irp->MdlAddress = ctxa.mdl;
@@ -1865,7 +1865,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
                 }
             } else {
                 for (unsigned int j = 0; j < near * far; j++) {
-                    auto ctx = &ctxs[(near * far * i) + j];
+                    io_context_raid10* ctx = &ctxs[(near * far * i) + j];
 
                     ctx->Status = STATUS_SUCCESS;
                 }
@@ -1889,7 +1889,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
 
             MmBuildMdlForNonPagedPool(tmpmdl);
 
-            auto data = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+            PVOID data = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
 
             RtlCopyMemory(tmpbuf, (uint8_t*)data + skip_first, length);
         }
@@ -1904,10 +1904,10 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
                     ctxs[i * near * far].pfnp = MmGetMdlPfnArray(ctxs[i * near * far].mdl);
             }
 
-            auto src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
+            PPFN_NUMBER src_pfns = MmGetMdlPfnArray((tmpmdl ? tmpmdl : Irp->MdlAddress));
 
             while (pos < length) {
-                auto ctxa = &ctxs[stripe * near * far];
+                io_context_raid10* ctxa = &ctxs[stripe * near * far];
 
                 uint32_t len, pages;
 
@@ -1957,7 +1957,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
         LIST_ENTRY* le = first_bits.Flink;
 
         while (le != &first_bits) {
-            auto fb = CONTAINING_RECORD(le, io_context_raid10, list_entry);
+            io_context_raid10* fb = CONTAINING_RECORD(le, io_context_raid10, list_entry);
 
             fb->Status = IoCallDriver(fb->sc->device, fb->Irp);
             if (!NT_SUCCESS(fb->Status))
@@ -1981,7 +1981,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
 
     if (skip_first != 0) {
         while (!IsListEmpty(&first_bits)) {
-            auto fb = CONTAINING_RECORD(RemoveHeadList(&first_bits), io_context_raid10, list_entry);
+            io_context_raid10* fb = CONTAINING_RECORD(RemoveHeadList(&first_bits), io_context_raid10, list_entry);
 
             if (fb->Status == STATUS_PENDING) {
                 KeWaitForSingleObject(&fb->Event, Executive, KernelMode, false, nullptr);

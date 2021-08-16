@@ -59,7 +59,7 @@ typedef struct {
 } pnp_callback_context;
 
 static void __stdcall do_pnp_callback(PDEVICE_OBJECT, PVOID con) {
-    auto context = (pnp_callback_context*)con;
+    pnp_callback_context* context = (pnp_callback_context*)con;
 
     context->func(context->DriverObject, &context->name);
 
@@ -72,7 +72,7 @@ static void __stdcall do_pnp_callback(PDEVICE_OBJECT, PVOID con) {
 static void enqueue_pnp_callback(PDRIVER_OBJECT DriverObject, PUNICODE_STRING name, pnp_callback func) {
     PIO_WORKITEM work_item = IoAllocateWorkItem(master_devobj);
 
-    auto context = (pnp_callback_context*)ExAllocatePoolWithTag(PagedPool, sizeof(pnp_callback_context), ALLOC_TAG);
+    pnp_callback_context* context = (pnp_callback_context*)ExAllocatePoolWithTag(PagedPool, sizeof(pnp_callback_context), ALLOC_TAG);
 
     if (!context) {
         ERR("out of memory\n");
@@ -110,7 +110,7 @@ typedef struct {
 } read_context;
 
 static NTSTATUS __stdcall read_completion(PDEVICE_OBJECT, PIRP Irp, PVOID conptr) {
-    auto context = (read_context*)conptr;
+    read_context* context = (read_context*)conptr;
 
     context->iosb = Irp->IoStatus;
     KeSetEvent(&context->Event, 0, FALSE);
@@ -222,7 +222,7 @@ void unit_set_pdo(set_pdo* pdo) {
         ExFreePool(pdo->child_list);
 
     while (!IsListEmpty(&pdo->children)) {
-        auto c = CONTAINING_RECORD(RemoveHeadList(&pdo->children), set_child, list_entry);
+        set_child* c = CONTAINING_RECORD(RemoveHeadList(&pdo->children), set_child, list_entry);
 
         ObDereferenceObject(c->fileobj);
 
@@ -244,7 +244,7 @@ void unit_set_pdo(set_pdo* pdo) {
 static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_STRING devpath, mdraid_superblock* sb) {
     set_pdo* sd;
 
-    auto c = (set_child*)ExAllocatePoolWithTag(NonPagedPool, sizeof(set_child), ALLOC_TAG);
+    set_child* c = (set_child*)ExAllocatePoolWithTag(NonPagedPool, sizeof(set_child), ALLOC_TAG);
     if (!c) {
         ERR("out of memory\n");
         return;
@@ -495,7 +495,7 @@ static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_S
         ERR("IoRegisterLastChanceShutdownNotification returned %08x\n", Status);
 
     if (!no_pnp) {
-        auto cde = (control_device*)master_devobj->DeviceExtension;
+        control_device* cde = (control_device*)master_devobj->DeviceExtension;
         IoInvalidateDeviceRelations(cde->buspdo, BusRelations);
     }
 
@@ -515,7 +515,7 @@ fail:
 }
 
 static uint32_t calc_csum(mdraid_superblock* sb) {
-    auto buf = (uint32_t*)sb;
+    uint32_t* buf = (uint32_t*)sb;
     uint64_t v = 0;
 
     uint32_t size = (offsetof(mdraid_superblock, roles) + (2 * sb->array_state.max_dev)) / 4;
@@ -578,7 +578,7 @@ void volume_arrival(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
 
     uint32_t buflen = sector_align((uint32_t)sizeof(mdraid_superblock), sector_size);
 
-    auto sb = (mdraid_superblock*)ExAllocatePoolWithTag(PagedPool, buflen, ALLOC_TAG);
+    mdraid_superblock* sb = (mdraid_superblock*)ExAllocatePoolWithTag(PagedPool, buflen, ALLOC_TAG);
     if (!sb) {
         ERR("out of memory\n");
         ObDereferenceObject(fileobj);
@@ -675,7 +675,7 @@ static void child_removed(set_pdo* pdo, set_child* sc) {
         if (!NT_SUCCESS(Status))
             WARN("IoSetDeviceInterfaceState returned %08x\n", Status);
 
-        auto cde = (control_device*)master_devobj->DeviceExtension;
+        control_device* cde = (control_device*)master_devobj->DeviceExtension;
         IoInvalidateDeviceRelations(cde->buspdo, BusRelations);
     }
 
@@ -690,7 +690,7 @@ void volume_removal(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
     LIST_ENTRY* le = dev_list.Flink;
 
     while (le != &dev_list) {
-        auto sd = CONTAINING_RECORD(le, set_pdo, list_entry);
+        set_pdo* sd = CONTAINING_RECORD(le, set_pdo, list_entry);
 
         ExAcquireResourceExclusiveLite(&sd->lock, true);
 
@@ -698,7 +698,7 @@ void volume_removal(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
 
         LIST_ENTRY* le2 = sd->children.Flink;
         while (le2 != &sd->children) {
-            auto sc = CONTAINING_RECORD(le2, set_child, list_entry);
+            set_child* sc = CONTAINING_RECORD(le2, set_child, list_entry);
 
             if (sc->devpath.Length == devpath->Length && RtlCompareMemory(sc->devpath.Buffer, devpath->Buffer, devpath->Length) == devpath->Length) {
                 child_removed(sd, sc);
@@ -752,7 +752,7 @@ static void __stdcall DriverUnload(PDRIVER_OBJECT DriverObject) {
     ExAcquireResourceExclusiveLite(&dev_lock, true);
 
     while (!IsListEmpty(&dev_list)) {
-        auto sd = CONTAINING_RECORD(RemoveHeadList(&dev_list), set_pdo, list_entry);
+        set_pdo* sd = CONTAINING_RECORD(RemoveHeadList(&dev_list), set_pdo, list_entry);
 
         sd->readonly = true;
 
@@ -773,7 +773,7 @@ static void __stdcall DriverUnload(PDRIVER_OBJECT DriverObject) {
 
     ExReleaseResourceLite(&dev_lock);
 
-    auto cde = (control_device*)master_devobj->DeviceExtension;
+    control_device* cde = (control_device*)master_devobj->DeviceExtension;
     IoInvalidateDeviceRelations(cde->buspdo, BusRelations);
 
     ExDeleteResourceLite(&dev_lock);
@@ -805,7 +805,7 @@ static NTSTATUS mountdev_query_device_name(mdraid_array_info* array_info, PIRP I
         return STATUS_BUFFER_TOO_SMALL;
     }
 
-    auto name = (MOUNTDEV_NAME*)Irp->AssociatedIrp.SystemBuffer;
+    MOUNTDEV_NAME* name = (MOUNTDEV_NAME*)Irp->AssociatedIrp.SystemBuffer;
 
     name->NameLength = sizeof(device_prefix) + (36 * sizeof(char16_t));
 
@@ -816,7 +816,7 @@ static NTSTATUS mountdev_query_device_name(mdraid_array_info* array_info, PIRP I
 
     RtlCopyMemory(name->Name, device_prefix, sizeof(device_prefix) - sizeof(char16_t));
 
-    auto p = &name->Name[(sizeof(device_prefix) / sizeof(char16_t)) - 1];
+    WCHAR* p = &name->Name[(sizeof(device_prefix) / sizeof(char16_t)) - 1];
     for (uint8_t i = 0; i < 16; i++) {
         *p = hex_digit((array_info->set_uuid[i] & 0xf0) >> 4); p++;
         *p = hex_digit(array_info->set_uuid[i] & 0xf); p++;
@@ -841,7 +841,7 @@ static NTSTATUS mountdev_query_unique_id(mdraid_array_info* array_info, PIRP Irp
         return STATUS_BUFFER_TOO_SMALL;
     }
 
-    auto mduid = (MOUNTDEV_UNIQUE_ID*)Irp->AssociatedIrp.SystemBuffer;
+    MOUNTDEV_UNIQUE_ID* mduid = (MOUNTDEV_UNIQUE_ID*)Irp->AssociatedIrp.SystemBuffer;
     mduid->UniqueIdLength = sizeof(array_info->set_uuid);
 
     if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < offsetof(MOUNTDEV_UNIQUE_ID, UniqueId[0]) + mduid->UniqueIdLength) {
@@ -871,7 +871,7 @@ static NTSTATUS dev_ioctl(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObject, 
     if (!Irp)
         return STATUS_INSUFFICIENT_RESOURCES;
 
-    auto IrpSp = IoGetNextIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetNextIrpStackLocation(Irp);
 
     IrpSp->FileObject = FileObject;
 
@@ -896,7 +896,7 @@ static NTSTATUS check_verify(set_pdo* pdo) {
 
     LIST_ENTRY* le = pdo->children.Flink;
     while (le != &pdo->children) {
-        auto c = CONTAINING_RECORD(le, set_child, list_entry);
+        set_child* c = CONTAINING_RECORD(le, set_child, list_entry);
 
         NTSTATUS Status = dev_ioctl(c->device, c->fileobj, IOCTL_STORAGE_CHECK_VERIFY, nullptr, 0, nullptr, 0, false, nullptr);
         if (!NT_SUCCESS(Status)) {
@@ -918,7 +918,7 @@ static NTSTATUS disk_get_drive_geometry(uint64_t array_size, PIRP Irp, PDEVICE_O
     if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(DISK_GEOMETRY))
         return STATUS_BUFFER_TOO_SMALL;
 
-    auto geom = (DISK_GEOMETRY*)Irp->AssociatedIrp.SystemBuffer;
+    DISK_GEOMETRY* geom = (DISK_GEOMETRY*)Irp->AssociatedIrp.SystemBuffer;
 
     geom->BytesPerSector = devobj->SectorSize == 0 ? 0x200 : devobj->SectorSize;
     geom->SectorsPerTrack = 0x3f;
@@ -937,7 +937,7 @@ static NTSTATUS disk_get_length_info(uint64_t array_size, PIRP Irp) {
     if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(GET_LENGTH_INFORMATION))
         return STATUS_BUFFER_TOO_SMALL;
 
-    auto gli = (GET_LENGTH_INFORMATION*)Irp->AssociatedIrp.SystemBuffer;
+    GET_LENGTH_INFORMATION* gli = (GET_LENGTH_INFORMATION*)Irp->AssociatedIrp.SystemBuffer;
 
     gli->Length.QuadPart = array_size;
 
@@ -947,7 +947,7 @@ static NTSTATUS disk_get_length_info(uint64_t array_size, PIRP Irp) {
 }
 
 static NTSTATUS set_device_control(set_device* set, PIRP Irp) {
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
     if (!set->pdo)
         return STATUS_INVALID_DEVICE_REQUEST;
@@ -1012,7 +1012,7 @@ end:
 
 static NTSTATUS control_power(PIRP Irp) {
     NTSTATUS Status;
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+    PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
     if (IrpSp->MinorFunction == IRP_MN_SET_POWER || IrpSp->MinorFunction == IRP_MN_QUERY_POWER)
         Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -1200,7 +1200,7 @@ static void get_registry_value(HANDLE h, const WCHAR* string, ULONG type, void* 
     Status = ZwQueryValueKey(h, &us, KeyValueFullInformation, nullptr, 0, &kvfilen);
 
     if ((Status == STATUS_BUFFER_TOO_SMALL || Status == STATUS_BUFFER_OVERFLOW) && kvfilen > 0) {
-        auto kvfi = (KEY_VALUE_FULL_INFORMATION*)ExAllocatePoolWithTag(PagedPool, kvfilen, ALLOC_TAG);
+        KEY_VALUE_FULL_INFORMATION* kvfi = (KEY_VALUE_FULL_INFORMATION*)ExAllocatePoolWithTag(PagedPool, kvfilen, ALLOC_TAG);
 
         if (!kvfi) {
             ERR("out of memory\n");
@@ -1357,7 +1357,7 @@ extern "C" NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_
         return Status;
     }
 
-    auto cde = (control_device*)master_devobj->DeviceExtension;
+    control_device* cde = (control_device*)master_devobj->DeviceExtension;
     cde->type = device_type::control;
 
     ExInitializeResourceLite(&dev_lock);
