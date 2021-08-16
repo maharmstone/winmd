@@ -21,7 +21,22 @@
 
 static const int64_t flush_interval = 5;
 
-NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
+static NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx);
+
+struct io_context {
+    PIRP Irp;
+    KEVENT Event;
+    IO_STATUS_BLOCK iosb;
+    NTSTATUS Status;
+    set_child* sc;
+    uint64_t stripe_start;
+    uint64_t stripe_end;
+    void* va2;
+    PMDL mdl;
+    LIST_ENTRY list_entry;
+};
+
+static NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
     auto context = (io_context*)ctx;
 
     context->iosb = Irp->IoStatus;
@@ -276,15 +291,30 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
                                 goto end;
                             }
 
-                            new (last) io_context(pdo->child_list[stripe], stripe_start, stripe_start + 512);
+                            last->sc = pdo->child_list[stripe];
+                            last->stripe_start = stripe_start;
+                            last->stripe_end = stripe_start + 512;
 
-                            InsertTailList(&ctxs, &last->list_entry);
-
-                            if (!NT_SUCCESS(last->Status)) {
-                                ERR("io_context constructor returned %08x\n", last->Status);
-                                Status = last->Status;
+                            last->Irp = IoAllocateIrp(pdo->child_list[stripe]->device->StackSize, false);
+                            if (!last->Irp) {
+                                ERR("out of memory\n");
+                                ExFreePool(last);
+                                Status = STATUS_INSUFFICIENT_RESOURCES;
                                 goto end;
                             }
+
+                            last->Irp->UserIosb = &last->iosb;
+
+                            KeInitializeEvent(&last->Event, NotificationEvent, false);
+                            last->Irp->UserEvent = &last->Event;
+
+                            IoSetCompletionRoutine(last->Irp, io_completion, last, true, true, true);
+
+                            last->Status = STATUS_SUCCESS;
+
+                            last->mdl = nullptr;
+
+                            InsertTailList(&ctxs, &last->list_entry);
 
                             last->va2 = pc->data + (i * chunk_size) + (j * 512);
                         }
@@ -350,7 +380,12 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
                     Status = ctx->Status;
                 }
 
-                ctx->~io_context();
+                if (ctx->mdl)
+                    IoFreeMdl(ctx->mdl);
+
+                if (ctx->Irp)
+                    IoFreeIrp(ctx->Irp);
+
                 ExFreePool(ctx);
             }
 
@@ -368,7 +403,12 @@ end:
     while (!IsListEmpty(&ctxs)) {
         io_context* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
 
-        ctx->~io_context();
+        if (ctx->mdl)
+            IoFreeMdl(ctx->mdl);
+
+        if (ctx->Irp)
+            IoFreeIrp(ctx->Irp);
+
         ExFreePool(ctx);
     }
 

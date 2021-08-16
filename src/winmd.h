@@ -227,7 +227,6 @@ struct partial_chunk {
     alignas(16) uint8_t data[1];
 };
 
-class io_context;
 class set_pdo;
 
 class set_device : device {
@@ -309,7 +308,6 @@ bool is_top_level(PIRP Irp);
 NTSTATUS drv_read(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS drv_write(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 void __stdcall flush_thread(void* context);
-NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx);
 void do_xor(uint8_t* buf1, uint8_t* buf2, uint32_t len);
 NTSTATUS add_partial_chunk(set_pdo* pdo, uint64_t offset, uint32_t length, void* data);
 void flush_chunks(set_pdo* pdo);
@@ -345,59 +343,3 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp);
 // linear.cpp
 NTSTATUS read_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
 NTSTATUS write_linear(set_pdo* pdo, PIRP Irp, bool* no_complete);
-
-class io_context {
-public:
-    io_context() {
-        Irp = nullptr;
-        va = nullptr;
-        mdl = nullptr;
-    }
-
-    io_context(set_child* sc, uint64_t stripe_start, uint64_t stripe_end) : sc(sc), stripe_start(stripe_start), stripe_end(stripe_end) {
-        Irp = IoAllocateIrp(sc->device->StackSize, false);
-        if (!Irp) {
-            ERR("out of memory\n");
-            Status = STATUS_INSUFFICIENT_RESOURCES;
-            return;
-        }
-
-        Irp->UserIosb = &iosb;
-
-        KeInitializeEvent(&Event, NotificationEvent, false);
-        Irp->UserEvent = &Event;
-
-        IoSetCompletionRoutine(Irp, io_completion, this, true, true, true);
-
-        Status = STATUS_SUCCESS;
-
-        va = nullptr;
-        mdl = nullptr;
-    }
-
-    ~io_context() {
-        if (mdl)
-            IoFreeMdl(mdl);
-
-        if (va)
-            ExFreePool(va);
-
-        if (Irp)
-            IoFreeIrp(Irp);
-    }
-
-    PIRP Irp;
-    KEVENT Event;
-    IO_STATUS_BLOCK iosb;
-    NTSTATUS Status;
-    set_child* sc;
-    uint64_t stripe_start;
-    uint64_t stripe_end;
-    void* va;
-    void* va2;
-    PMDL mdl;
-    PFN_NUMBER* pfns;
-    PFN_NUMBER* pfnp;
-    bool first;
-    LIST_ENTRY list_entry;
-};
