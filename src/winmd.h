@@ -228,7 +228,6 @@ struct set_device {
 
 class set_pdo {
 public:
-    set_pdo();
     ~set_pdo();
 
     enum device_type type;
@@ -236,24 +235,23 @@ public:
     mdraid_array_info array_info;
     mdraid_array_state array_state;
     mdraid_roles roles;
-    uint64_t array_size = 0;
+    uint64_t array_size;
     set_child** child_list;
-    LONG read_device = 0;
-    ULONG found_devices = 0;
-    bool loaded = false;
+    LONG read_device;
+    ULONG found_devices;
+    bool loaded;
     PDEVICE_OBJECT pdo;
-    set_device* dev = nullptr;
-
-    uint8_t stack_size = 0;
-    uint16_t dev_sector_size = 0;
+    set_device* dev;
+    uint8_t stack_size;
+    uint16_t dev_sector_size;
     LIST_ENTRY children;
     ERESOURCE partial_chunks_lock;
     LIST_ENTRY partial_chunks;
     LIST_ENTRY list_entry;
-    HANDLE flush_thread_handle = nullptr;
+    HANDLE flush_thread_handle;
     KTIMER flush_thread_timer;
     KEVENT flush_thread_finished;
-    bool readonly = false;
+    bool readonly;
     UNICODE_STRING bus_name;
 };
 

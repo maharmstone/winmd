@@ -218,21 +218,6 @@ static WCHAR hex_digit(uint8_t c) {
     return c - 10 + 'a';
 }
 
-set_pdo::set_pdo() {
-    ExInitializeResourceLite(&lock);
-
-    InitializeListHead(&children);
-
-    ExInitializeResourceLite(&partial_chunks_lock);
-
-    InitializeListHead(&partial_chunks);
-
-    child_list = nullptr;
-    bus_name.Buffer = nullptr;
-
-    KeInitializeEvent(&flush_thread_finished, NotificationEvent, false);
-}
-
 // FIXME - make sure this gets called
 set_pdo::~set_pdo() {
     if (child_list)
@@ -430,11 +415,31 @@ static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_S
 
     newdev->Flags |= DO_BUS_ENUMERATED_DEVICE;
 
-    sd = new (newdev->DeviceExtension) set_pdo;
+    sd = (set_pdo*)newdev->DeviceExtension;
     sd->type = device_type::pdo;
     sd->pdo = newdev;
     sd->stack_size = devobj->StackSize + 1;
     sd->dev_sector_size = devobj->SectorSize == 0 ? 512 : devobj->SectorSize;
+    sd->array_size = 0;
+    sd->read_device = 0;
+    sd->found_devices = 0;
+    sd->loaded = false;
+    sd->dev = nullptr;
+    sd->flush_thread_handle = nullptr;
+    sd->readonly = false;
+
+    ExInitializeResourceLite(&sd->lock);
+
+    InitializeListHead(&sd->children);
+
+    ExInitializeResourceLite(&sd->partial_chunks_lock);
+
+    InitializeListHead(&sd->partial_chunks);
+
+    sd->child_list = nullptr;
+    sd->bus_name.Buffer = nullptr;
+
+    KeInitializeEvent(&sd->flush_thread_finished, NotificationEvent, false);
 
     RtlCopyMemory(&sd->array_info, &sb->array_info, sizeof(sb->array_info));
     RtlCopyMemory(&sd->array_state, &sb->array_state, sizeof(sb->array_state));
