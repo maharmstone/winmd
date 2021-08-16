@@ -17,6 +17,13 @@
 
 #include "winmd.h"
 
+struct io_context_raid1 {
+    PIRP Irp;
+    KEVENT Event;
+    IO_STATUS_BLOCK iosb;
+    NTSTATUS Status;
+};
+
 NTSTATUS read_raid1(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     NTSTATUS Status;
 
@@ -42,18 +49,27 @@ NTSTATUS read_raid1(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     return Status;
 }
 
+static NTSTATUS __stdcall io_completion_raid1(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
+    auto context = (io_context_raid1*)ctx;
+
+    context->iosb = Irp->IoStatus;
+    KeSetEvent(&context->Event, 0, FALSE);
+
+    return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
 NTSTATUS write_raid1(set_pdo* pdo, PIRP Irp) {
     NTSTATUS Status;
 
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
-    auto ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * pdo->array_info.raid_disks, ALLOC_TAG);
+    auto ctxs = (io_context_raid1*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid1) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlZeroMemory(ctxs, sizeof(io_context) * pdo->array_info.raid_disks);
+    RtlZeroMemory(ctxs, sizeof(io_context_raid1) * pdo->array_info.raid_disks);
 
     for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         ctxs[i].Irp = IoAllocateIrp(pdo->child_list[i]->device->StackSize, false);
@@ -78,7 +94,7 @@ NTSTATUS write_raid1(set_pdo* pdo, PIRP Irp) {
         KeInitializeEvent(&ctxs[i].Event, NotificationEvent, false);
         ctxs[i].Irp->UserEvent = &ctxs[i].Event;
 
-        IoSetCompletionRoutine(ctxs[i].Irp, io_completion, &ctxs[i], true, true, true);
+        IoSetCompletionRoutine(ctxs[i].Irp, io_completion_raid1, &ctxs[i], true, true, true);
     }
 
     for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
