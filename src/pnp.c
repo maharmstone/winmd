@@ -23,6 +23,7 @@ bool no_pnp = false;
 extern ERESOURCE dev_lock;
 extern LIST_ENTRY dev_list;
 extern PDRIVER_OBJECT drvobj;
+extern bool is_windows_8;
 
 static NTSTATUS set_query_hardware_ids(PIRP Irp) {
     static const char16_t ids[] = u"WinMDVolume\0";
@@ -370,7 +371,7 @@ static NTSTATUS add_set_device(set_pdo* pdo) {
     }
 
     Status = IoCreateDevice(drvobj, sizeof(set_device), &volname, FILE_DEVICE_DISK,
-                            RtlIsNtDdiVersionAvailable(NTDDI_WIN8) ? FILE_DEVICE_ALLOW_APPCONTAINER_TRAVERSAL : 0, false, &voldev);
+                            is_windows_8 ? FILE_DEVICE_ALLOW_APPCONTAINER_TRAVERSAL : 0, false, &voldev);
 
     ExFreePool(volname.Buffer);
 

@@ -17,7 +17,22 @@
 
 #include "winmd.h"
 #include <ntddstor.h>
+
+#ifndef _MSC_VER
+#include <initguid.h>
+#include <ntddstor.h>
+#undef INITGUID
+#endif
+
 #include <ntdddisk.h>
+#include <ntddvol.h>
+
+#ifdef _MSC_VER
+#include <initguid.h>
+#include <ntddstor.h>
+#undef INITGUID
+#endif
+
 #include <wdmguid.h>
 #include <mountdev.h>
 
@@ -44,6 +59,7 @@ uint32_t debug_log_level = 0;
 
 ERESOURCE dev_lock;
 LIST_ENTRY dev_list;
+bool is_windows_8;
 
 extern bool no_pnp;
 
@@ -1308,6 +1324,17 @@ static NTSTATUS drv_system_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
 NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
     NTSTATUS Status;
+    RTL_OSVERSIONINFOW ver;
+
+    ver.dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOW);
+
+    Status = RtlGetVersion(&ver);
+    if (!NT_SUCCESS(Status)) {
+        ERR("RtlGetVersion returned %08lx\n", Status);
+        return Status;
+    }
+
+    is_windows_8 = ver.dwMajorVersion > 6 || (ver.dwMajorVersion == 6 && ver.dwMinorVersion >= 2);
 
     drvobj = DriverObject;
 

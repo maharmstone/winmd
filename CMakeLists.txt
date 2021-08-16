@@ -95,7 +95,7 @@ if(MSVC)
     string(REGEX REPLACE "/RTC(su|[1su])" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
     string(REGEX REPLACE "/RTC(su|[1su])" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
 else()
-    target_compile_options(winmd PUBLIC -Wall -Wno-expansion-to-defined -Wunused-parameter -Wtype-limits -Wextra -Wno-unknown-pragmas -msse4.2 -mrtd)
+    target_compile_options(winmd PUBLIC -Wall -Wno-expansion-to-defined -Wunused-parameter -Wtype-limits -Wextra -Wno-unknown-pragmas -msse4.2)
 
     if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
         target_compile_options(winmd PUBLIC -Werror=cast-function-type)
