@@ -47,7 +47,7 @@ static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t sta
     for (uint32_t i = start_disk; i < pdo->array_info.raid_disks; i++) {
         uint32_t io_length = (uint32_t)min(length, (pdo->child_list[i]->disk_info.data_size * 512) - offset);
 
-        io_context_linear* last = (io_context_linear*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_linear), ALLOC_TAG);
+        io_context_linear* last = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_linear), ALLOC_TAG);
         if (!last) {
             Status = STATUS_INSUFFICIENT_RESOURCES;
             goto fail;

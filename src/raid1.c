@@ -63,7 +63,7 @@ NTSTATUS write_raid1(set_pdo* pdo, PIRP Irp) {
 
     PIO_STACK_LOCATION IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
-    io_context_raid1* ctxs = (io_context_raid1*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid1) * pdo->array_info.raid_disks, ALLOC_TAG);
+    io_context_raid1* ctxs = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid1) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;

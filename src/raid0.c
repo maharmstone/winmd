@@ -86,7 +86,7 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks, &startoff, &startoffstripe);
     get_raid0_offset(offset + length - 1, stripe_length, pdo->array_info.raid_disks, &endoff, &endoffstripe);
 
-    io_context_raid0* ctxs = (io_context_raid0*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid0) * pdo->array_info.raid_disks, ALLOC_TAG);
+    io_context_raid0* ctxs = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid0) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -169,7 +169,7 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     }
 
     if (Irp->MdlAddress->ByteOffset != 0 || skip_first != 0) {
-        tmpbuf = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
+        tmpbuf = ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
         if (!tmpbuf) {
             ERR("out of memory\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -395,7 +395,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks, &startoff, &startoffstripe);
     get_raid0_offset(offset + length - 1, stripe_length, pdo->array_info.raid_disks, &endoff, &endoffstripe);
 
-    ctxs = (io_context_raid0*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid0) * pdo->array_info.raid_disks, ALLOC_TAG);
+    ctxs = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid0) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -459,7 +459,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     }
 
     if (Irp->MdlAddress->ByteOffset != 0 || skip_first != 0) {
-        tmpbuf = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
+        tmpbuf = ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
         if (!tmpbuf) {
             ERR("out of memory\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;

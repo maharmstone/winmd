@@ -82,7 +82,7 @@ static NTSTATUS read_raid10_odd(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     offset -= skip_first;
     length += skip_first;
 
-    io_context_raid10* ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks, ALLOC_TAG);
+    io_context_raid10* ctxs = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -210,7 +210,7 @@ static NTSTATUS read_raid10_odd(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     }
 
     if (Irp->MdlAddress->ByteOffset != 0 || skip_first != 0) {
-        tmpbuf = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
+        tmpbuf = ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
         if (!tmpbuf) {
             ERR("out of memory\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -380,7 +380,7 @@ static NTSTATUS read_raid10_offset(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks, &startoff, &startoffstripe);
     get_raid0_offset(offset + length - 1, stripe_length, pdo->array_info.raid_disks, &endoff, &endoffstripe);
 
-    io_context_raid10* ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks, ALLOC_TAG);
+    io_context_raid10* ctxs = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -516,7 +516,7 @@ static NTSTATUS read_raid10_offset(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     }
 
     if (Irp->MdlAddress->ByteOffset != 0 || skip_first != 0) {
-        tmpbuf = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
+        tmpbuf = ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
         if (!tmpbuf) {
             ERR("out of memory\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -793,7 +793,7 @@ NTSTATUS read_raid10(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks / near, &startoff, &startoffstripe);
     get_raid0_offset(offset + length - 1, stripe_length, pdo->array_info.raid_disks / near, &endoff, &endoffstripe);
 
-    ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks / near, ALLOC_TAG);
+    ctxs = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks / near, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -884,7 +884,7 @@ NTSTATUS read_raid10(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     }
 
     if (Irp->MdlAddress->ByteOffset != 0 || skip_first != 0) {
-        tmpbuf = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
+        tmpbuf = ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
         if (!tmpbuf) {
             ERR("out of memory\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1016,7 +1016,7 @@ static NTSTATUS write_raid10_odd(set_pdo* pdo, PIRP Irp) {
 
     uint32_t skip_first = offset % PAGE_SIZE ? (PAGE_SIZE - (offset % PAGE_SIZE)) : 0;
 
-    io_context_raid10* ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks, ALLOC_TAG);
+    io_context_raid10* ctxs = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -1052,7 +1052,7 @@ static NTSTATUS write_raid10_odd(set_pdo* pdo, PIRP Irp) {
         for (uint32_t i = 0; i < near; i++) {
             uint32_t disk_num = (chunk + i) % pdo->array_info.raid_disks;
 
-            io_context_raid10* last = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
+            io_context_raid10* last = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
             if (!last) {
                 Status = STATUS_INSUFFICIENT_RESOURCES;
                 goto end;
@@ -1185,7 +1185,7 @@ static NTSTATUS write_raid10_odd(set_pdo* pdo, PIRP Irp) {
         }
 
         if (Irp->MdlAddress->ByteOffset != 0 || skip_first != 0) {
-            tmpbuf = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
+            tmpbuf = ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
             if (!tmpbuf) {
                 ERR("out of memory\n");
                 Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1358,7 +1358,7 @@ static NTSTATUS write_raid10_offset_partial(set_pdo* pdo, LIST_ENTRY* ctxs, uint
 
         set_child* c = pdo->child_list[i];
 
-        io_context_raid10* ctxa = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
+        io_context_raid10* ctxa = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
         if (!ctxa) {
             ERR("out of memory\n");
             return STATUS_INSUFFICIENT_RESOURCES;
@@ -1413,7 +1413,7 @@ static NTSTATUS write_raid10_offset_partial(set_pdo* pdo, LIST_ENTRY* ctxs, uint
         for (uint32_t k = 1; k < far; k++) {
             set_child* c = pdo->child_list[(i + 1) % pdo->array_info.raid_disks];
 
-            io_context_raid10* ctxb = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
+            io_context_raid10* ctxb = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
             if (!ctxb) {
                 ERR("out of memory\n");
                 return STATUS_INSUFFICIENT_RESOURCES;
@@ -1528,7 +1528,7 @@ static NTSTATUS write_raid10_offset(set_pdo* pdo, PIRP Irp) {
         uint64_t stripe_start = (offset / full_stripe) * (stripe_length * far);
         uint32_t len = (length / full_stripe) * (stripe_length * far);
 
-        PFN_NUMBER** mdlpfns = (PFN_NUMBER**)ExAllocatePoolWithTag(NonPagedPool, sizeof(PFN_NUMBER*) * pdo->array_info.raid_disks, ALLOC_TAG);
+        PFN_NUMBER** mdlpfns = ExAllocatePoolWithTag(NonPagedPool, sizeof(PFN_NUMBER*) * pdo->array_info.raid_disks, ALLOC_TAG);
         if (!mdlpfns) {
             ERR("out of memory\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1538,7 +1538,7 @@ static NTSTATUS write_raid10_offset(set_pdo* pdo, PIRP Irp) {
         for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
             set_child* c = pdo->child_list[i];
 
-            io_context_raid10* ctxa = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
+            io_context_raid10* ctxa = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
             if (!ctxa) {
                 ERR("out of memory\n");
                 Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1700,7 +1700,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
     uint32_t length = IrpSp->Parameters.Write.Length;
     uint32_t skip_first = offset % PAGE_SIZE ? (PAGE_SIZE - (offset % PAGE_SIZE)) : 0;
 
-    io_context_raid10* ctxs = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks * far,
+    io_context_raid10* ctxs = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10) * pdo->array_info.raid_disks * far,
                                                           ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
@@ -1736,7 +1736,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
 
         for (uint32_t j = 0; j < far; j++) {
             for (uint32_t i = 0; i < near; i++) {
-                io_context_raid10* last = (io_context_raid10*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
+                io_context_raid10* last = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid10), ALLOC_TAG);
                 if (!last) {
                     ERR("out of memory\n");
                     Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1873,7 +1873,7 @@ NTSTATUS write_raid10(set_pdo* pdo, PIRP Irp) {
         }
 
         if (Irp->MdlAddress->ByteOffset != 0 || skip_first != 0) {
-            tmpbuf = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
+            tmpbuf = ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
             if (!tmpbuf) {
                 ERR("out of memory\n");
                 Status = STATUS_INSUFFICIENT_RESOURCES;

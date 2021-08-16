@@ -121,7 +121,7 @@ void log(const char* func, const char* msg, ...) {
     PIO_STACK_LOCATION IrpSp;
 
     size_t buf_size = 1024;
-    char* buf2 = (char*)ExAllocatePoolWithTag(NonPagedPool, buf_size, ALLOC_TAG);
+    char* buf2 = ExAllocatePoolWithTag(NonPagedPool, buf_size, ALLOC_TAG);
 
     if (!buf2) {
         DbgPrint("Couldn't allocate buffer in debug_message\n");
@@ -146,7 +146,7 @@ void log(const char* func, const char* msg, ...) {
     if ((size_t)retlen > buf_size - prefix_size) { // data truncated
         buf_size = retlen + prefix_size + 1;
 
-        char* buf3 = (char*)ExAllocatePoolWithTag(NonPagedPool, buf_size, ALLOC_TAG);
+        char* buf3 = ExAllocatePoolWithTag(NonPagedPool, buf_size, ALLOC_TAG);
         if (!buf3) {
             DbgPrint("Out of memory.\n");
             va_end(ap);
@@ -182,7 +182,7 @@ void log(const char* func, const char* msg, ...) {
     offset.u.LowPart = 0;
     offset.u.HighPart = 0;
 
-    logger_context* context = (logger_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(logger_context), ALLOC_TAG);
+    logger_context* context = ExAllocatePoolWithTag(NonPagedPool, sizeof(logger_context), ALLOC_TAG);
     if (!context) {
         DbgPrint("out of memory\n");
         goto exit2;

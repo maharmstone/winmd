@@ -27,7 +27,7 @@ extern PDRIVER_OBJECT drvobj;
 static NTSTATUS set_query_hardware_ids(PIRP Irp) {
     static const char16_t ids[] = u"WinMDVolume\0";
 
-    char16_t* out = (char16_t*)ExAllocatePoolWithTag(PagedPool, sizeof(ids), ALLOC_TAG);
+    char16_t* out = ExAllocatePoolWithTag(PagedPool, sizeof(ids), ALLOC_TAG);
     if (!out) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -66,7 +66,7 @@ static NTSTATUS query_device_ids(mdraid_array_info* array_info, PIRP Irp) {
     }
     *noff = 0;
 
-    char16_t* out = (char16_t*)ExAllocatePoolWithTag(PagedPool, sizeof(pref) + (36 * sizeof(char16_t)), ALLOC_TAG);
+    char16_t* out = ExAllocatePoolWithTag(PagedPool, sizeof(pref) + (36 * sizeof(char16_t)), ALLOC_TAG);
     if (!out) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -123,7 +123,7 @@ static NTSTATUS query_capabilities(PIRP Irp) {
 static NTSTATUS query_hardware_ids(PIRP Irp) {
     static const char16_t ids[] = u"ROOT\\winmd\0";
 
-    char16_t* out = (char16_t*)ExAllocatePoolWithTag(PagedPool, sizeof(ids), ALLOC_TAG);
+    char16_t* out = ExAllocatePoolWithTag(PagedPool, sizeof(ids), ALLOC_TAG);
     if (!out) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -152,7 +152,7 @@ static NTSTATUS query_device_relations(PIRP Irp) {
     }
 
     ULONG drsize = offsetof(DEVICE_RELATIONS, Objects[0]) + (num_children * sizeof(PDEVICE_OBJECT));
-    DEVICE_RELATIONS* dr = (DEVICE_RELATIONS*)ExAllocatePoolWithTag(PagedPool, drsize, ALLOC_TAG);
+    DEVICE_RELATIONS* dr = ExAllocatePoolWithTag(PagedPool, drsize, ALLOC_TAG);
 
     if (!dr) {
         ERR("out of memory\n");
@@ -345,7 +345,7 @@ static NTSTATUS add_set_device(set_pdo* pdo) {
 
     volname.Length = volname.MaximumLength = sizeof(device_prefix) + (36 * sizeof(char16_t));
 
-    volname.Buffer = (WCHAR*)ExAllocatePoolWithTag(NonPagedPool, volname.Length, ALLOC_TAG);
+    volname.Buffer = ExAllocatePoolWithTag(NonPagedPool, volname.Length, ALLOC_TAG);
     if (!volname.Buffer) {
         ERR("out of memory\n");
         Status = STATUS_INSUFFICIENT_RESOURCES;

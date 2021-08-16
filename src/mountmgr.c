@@ -46,7 +46,7 @@ char get_drive_letter(HANDLE h, const UNICODE_STRING* name) {
     USHORT mmmp_len = sizeof(MOUNTMGR_MOUNT_POINT) + name->Length;
     char ret;
 
-    MOUNTMGR_MOUNT_POINT* mmmp = (MOUNTMGR_MOUNT_POINT*)ExAllocatePoolWithTag(NonPagedPool, mmmp_len, ALLOC_TAG);
+    MOUNTMGR_MOUNT_POINT* mmmp = ExAllocatePoolWithTag(NonPagedPool, mmmp_len, ALLOC_TAG);
 
     if (!mmmp) {
         ERR("out of memory\n");
@@ -67,7 +67,7 @@ char get_drive_letter(HANDLE h, const UNICODE_STRING* name) {
                                    mmmp, mmmp_len, &points, sizeof(points));
 
     if (Status == STATUS_BUFFER_OVERFLOW && points.Size > 0) {
-        MOUNTMGR_MOUNT_POINTS* points2 = (MOUNTMGR_MOUNT_POINTS*)ExAllocatePoolWithTag(NonPagedPool, points.Size, ALLOC_TAG);
+        MOUNTMGR_MOUNT_POINTS* points2 = ExAllocatePoolWithTag(NonPagedPool, points.Size, ALLOC_TAG);
 
         if (!points2) {
             ERR("out of memory\n");
@@ -104,7 +104,7 @@ NTSTATUS remove_drive_letter(HANDLE h, char c) {
     NTSTATUS Status;
     USHORT mmmp_len = sizeof(MOUNTMGR_MOUNT_POINT) + sizeof(drive_letter_prefix) + sizeof(WCHAR);
 
-    MOUNTMGR_MOUNT_POINT* mmmp = (MOUNTMGR_MOUNT_POINT*)ExAllocatePoolWithTag(NonPagedPool, mmmp_len, ALLOC_TAG);
+    MOUNTMGR_MOUNT_POINT* mmmp = ExAllocatePoolWithTag(NonPagedPool, mmmp_len, ALLOC_TAG);
 
     if (!mmmp) {
         ERR("out of memory\n");
@@ -129,7 +129,7 @@ NTSTATUS remove_drive_letter(HANDLE h, char c) {
                                    mmmp, mmmp_len, &points, sizeof(points));
 
     if (Status == STATUS_BUFFER_OVERFLOW && points.Size > 0) {
-        MOUNTMGR_MOUNT_POINTS* points2 = (MOUNTMGR_MOUNT_POINTS*)ExAllocatePoolWithTag(NonPagedPool, points.Size, ALLOC_TAG);
+        MOUNTMGR_MOUNT_POINTS* points2 = ExAllocatePoolWithTag(NonPagedPool, points.Size, ALLOC_TAG);
         if (!points2) {
             ERR("out of memory\n");
             ExFreePool(mmmp);

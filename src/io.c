@@ -252,7 +252,7 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
 
     InitializeListHead(&ctxs);
 
-    uint8_t* valid = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, sector_align32(pdo->array_info.chunksize, 32) / 8, ALLOC_TAG);
+    uint8_t* valid = ExAllocatePoolWithTag(NonPagedPool, sector_align32(pdo->array_info.chunksize, 32) / 8, ALLOC_TAG);
     if (!valid) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -286,7 +286,7 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
                         if (last && last->stripe_end == stripe_start)
                             last->stripe_end += 512;
                         else {
-                            io_context* last = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
+                            io_context* last = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context), ALLOC_TAG);
                             if (!last) {
                                 Status = STATUS_INSUFFICIENT_RESOURCES;
                                 goto end;
@@ -509,7 +509,7 @@ NTSTATUS add_partial_chunk(set_pdo* pdo, uint64_t offset, uint32_t length, void*
     pclen += full_chunk; // data length
     pclen += sector_align32(pdo->array_info.chunksize * data_disks, 32) / 8; // bitmap length
 
-    pc = (partial_chunk*)ExAllocatePoolWithTag(NonPagedPool/*FIXME - ?*/, pclen, ALLOC_TAG);
+    pc = ExAllocatePoolWithTag(NonPagedPool/*FIXME - ?*/, pclen, ALLOC_TAG);
     if (!pc) {
         ERR("out of memory\n");
         Status = STATUS_INSUFFICIENT_RESOURCES;

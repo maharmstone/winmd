@@ -119,7 +119,7 @@ NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     offset -= skip_first;
     length += skip_first;
 
-    ctxs = (io_context_raid6*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid6) * pdo->array_info.raid_disks, ALLOC_TAG);
+    ctxs = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid6) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -278,7 +278,7 @@ NTSTATUS read_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     }
 
     if (Irp->MdlAddress->ByteOffset != 0 || skip_first != 0) {
-        tmpbuf = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
+        tmpbuf = ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
         if (!tmpbuf) {
             ERR("out of memory\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -705,7 +705,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
         get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks - 2, &startoff, &startoffstripe);
     }
 
-    ctxs = (io_context_raid6*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid6) * pdo->array_info.raid_disks, ALLOC_TAG);
+    ctxs = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid6) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -855,7 +855,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     }
 
     if (Irp->MdlAddress->ByteOffset != 0 || skip_first != 0) {
-        tmpbuf = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
+        tmpbuf = ExAllocatePoolWithTag(NonPagedPool, length, ALLOC_TAG);
         if (!tmpbuf) {
             ERR("out of memory\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -883,7 +883,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
         PFN_NUMBER* q_pfns = NULL;
 
         if (parity_length > 0) {
-            parity_data = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, parity_length, ALLOC_TAG);
+            parity_data = ExAllocatePoolWithTag(NonPagedPool, parity_length, ALLOC_TAG);
             if (!parity_data) {
                 ERR("out of memory\n");
                 Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -902,7 +902,7 @@ NTSTATUS write_raid6(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             pp = parity_data;
             parity_pfns = MmGetMdlPfnArray(parity_mdl);
 
-            q_data = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, parity_length, ALLOC_TAG);
+            q_data = ExAllocatePoolWithTag(NonPagedPool, parity_length, ALLOC_TAG);
             if (!q_data) {
                 ERR("out of memory\n");
                 Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -1156,7 +1156,7 @@ NTSTATUS flush_partial_chunk_raid6(set_pdo* pdo, partial_chunk* pc, RTL_BITMAP* 
     uint32_t chunk_size = pdo->array_info.chunksize * 512;
     bool asymmetric = pdo->array_info.layout == RAID_LAYOUT_LEFT_ASYMMETRIC || pdo->array_info.layout == RAID_LAYOUT_RIGHT_ASYMMETRIC;
 
-    uint8_t* q = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, chunk_size, ALLOC_TAG);
+    uint8_t* q = ExAllocatePoolWithTag(NonPagedPool, chunk_size, ALLOC_TAG);
     if (!q) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
@@ -1194,7 +1194,7 @@ NTSTATUS flush_partial_chunk_raid6(set_pdo* pdo, partial_chunk* pc, RTL_BITMAP* 
         {
             uint64_t stripe_start = (pc->offset / data_disks) + (index * 512) + (parity_dev->disk_info.data_offset * 512);
 
-            io_context_raid6* last = (io_context_raid6*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid6), ALLOC_TAG);
+            io_context_raid6* last = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid6), ALLOC_TAG);
             if (!last) {
                 Status = STATUS_INSUFFICIENT_RESOURCES;
                 goto end;
@@ -1232,7 +1232,7 @@ NTSTATUS flush_partial_chunk_raid6(set_pdo* pdo, partial_chunk* pc, RTL_BITMAP* 
         {
             uint64_t stripe_start = (pc->offset / data_disks) + (index * 512) + (q_dev->disk_info.data_offset * 512);
 
-            io_context_raid6* last = (io_context_raid6*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid6), ALLOC_TAG);
+            io_context_raid6* last = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid6), ALLOC_TAG);
             if (!last) {
                 Status = STATUS_INSUFFICIENT_RESOURCES;
                 goto end;
@@ -1372,7 +1372,7 @@ static void paranoid_raid6_check(set_pdo* pdo, uint64_t parity_offset, uint32_t 
     InitializeListHead(&ctxs);
 
     for (uint32_t i = 0; i < pdo->array_info.raid_disks; i++) {
-        io_context_raid6* last = (io_context_raid6*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid6), ALLOC_TAG);
+        io_context_raid6* last = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid6), ALLOC_TAG);
         if (!last) {
             ERR("out of memory\n");
             goto end2;
@@ -1458,20 +1458,20 @@ static void paranoid_raid6_check(set_pdo* pdo, uint64_t parity_offset, uint32_t 
 
     stripe_length = pdo->array_info.chunksize * 512;
 
-    p = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
+    p = ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
     if (!p) {
         ERR("out of memory\n");
         goto end2;
     }
 
-    q = (uint8_t*)ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
+    q = ExAllocatePoolWithTag(NonPagedPool, stripe_length, ALLOC_TAG);
     if (!q) {
         ERR("out of memory\n");
         ExFreePool(p);
         goto end2;
     }
 
-    ctxp = (io_context_raid6**)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid6*) * pdo->array_info.raid_disks,
+    ctxp = ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid6*) * pdo->array_info.raid_disks,
                                                ALLOC_TAG);
 
     if (!ctxp) {

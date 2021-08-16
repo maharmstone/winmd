@@ -72,7 +72,7 @@ static void __stdcall do_pnp_callback(PDEVICE_OBJECT, PVOID con) {
 static void enqueue_pnp_callback(PDRIVER_OBJECT DriverObject, PUNICODE_STRING name, pnp_callback func) {
     PIO_WORKITEM work_item = IoAllocateWorkItem(master_devobj);
 
-    pnp_callback_context* context = (pnp_callback_context*)ExAllocatePoolWithTag(PagedPool, sizeof(pnp_callback_context), ALLOC_TAG);
+    pnp_callback_context* context = ExAllocatePoolWithTag(PagedPool, sizeof(pnp_callback_context), ALLOC_TAG);
 
     if (!context) {
         ERR("out of memory\n");
@@ -83,7 +83,7 @@ static void enqueue_pnp_callback(PDRIVER_OBJECT DriverObject, PUNICODE_STRING na
     context->DriverObject = DriverObject;
 
     if (name->Length > 0) {
-        context->name.Buffer = (WCHAR*)ExAllocatePoolWithTag(PagedPool, name->Length, ALLOC_TAG);
+        context->name.Buffer = ExAllocatePoolWithTag(PagedPool, name->Length, ALLOC_TAG);
         if (!context->name.Buffer) {
             ERR("out of memory\n");
             ExFreePool(context);
@@ -244,7 +244,7 @@ void unit_set_pdo(set_pdo* pdo) {
 static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_STRING devpath, mdraid_superblock* sb) {
     set_pdo* sd;
 
-    set_child* c = (set_child*)ExAllocatePoolWithTag(NonPagedPool, sizeof(set_child), ALLOC_TAG);
+    set_child* c = ExAllocatePoolWithTag(NonPagedPool, sizeof(set_child), ALLOC_TAG);
     if (!c) {
         ERR("out of memory\n");
         return;
@@ -260,7 +260,7 @@ static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_S
     c->devpath.Length = c->devpath.MaximumLength = devpath->Length;
 
     if (devpath->Length > 0) {
-        c->devpath.Buffer = (WCHAR*)ExAllocatePoolWithTag(NonPagedPool, c->devpath.Length, ALLOC_TAG);
+        c->devpath.Buffer = ExAllocatePoolWithTag(NonPagedPool, c->devpath.Length, ALLOC_TAG);
 
         if (c->devpath.Buffer)
             RtlCopyMemory(c->devpath.Buffer, devpath->Buffer, c->devpath.Length);
@@ -460,7 +460,7 @@ static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_S
     }
 
     if (sd->array_info.raid_disks > 0) {
-        sd->child_list = (set_child**)ExAllocatePoolWithTag(PagedPool, sizeof(set_child*) * sd->array_info.raid_disks, ALLOC_TAG);
+        sd->child_list = ExAllocatePoolWithTag(PagedPool, sizeof(set_child*) * sd->array_info.raid_disks, ALLOC_TAG);
         if (!sd->child_list) {
             ERR("out of memory\n");
             IoDeleteDevice(newdev);
@@ -578,7 +578,7 @@ void volume_arrival(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
 
     uint32_t buflen = sector_align32((uint32_t)sizeof(mdraid_superblock), sector_size);
 
-    mdraid_superblock* sb = (mdraid_superblock*)ExAllocatePoolWithTag(PagedPool, buflen, ALLOC_TAG);
+    mdraid_superblock* sb = ExAllocatePoolWithTag(PagedPool, buflen, ALLOC_TAG);
     if (!sb) {
         ERR("out of memory\n");
         ObDereferenceObject(fileobj);
@@ -1200,7 +1200,7 @@ static void get_registry_value(HANDLE h, const WCHAR* string, ULONG type, void* 
     Status = ZwQueryValueKey(h, &us, KeyValueFullInformation, NULL, 0, &kvfilen);
 
     if ((Status == STATUS_BUFFER_TOO_SMALL || Status == STATUS_BUFFER_OVERFLOW) && kvfilen > 0) {
-        KEY_VALUE_FULL_INFORMATION* kvfi = (KEY_VALUE_FULL_INFORMATION*)ExAllocatePoolWithTag(PagedPool, kvfilen, ALLOC_TAG);
+        KEY_VALUE_FULL_INFORMATION* kvfi = ExAllocatePoolWithTag(PagedPool, kvfilen, ALLOC_TAG);
 
         if (!kvfi) {
             ERR("out of memory\n");
@@ -1331,7 +1331,7 @@ NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING Regi
         NTSTATUS Status;
         UNICODE_STRING us;
 
-        logger = (serial_logger*)ExAllocatePoolWithTag(NonPagedPool, sizeof(serial_logger), ALLOC_TAG);
+        logger = ExAllocatePoolWithTag(NonPagedPool, sizeof(serial_logger), ALLOC_TAG);
         if (!logger) {
             ERR("out of memory\n");
             return STATUS_INSUFFICIENT_RESOURCES;
