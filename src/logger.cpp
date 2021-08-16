@@ -39,7 +39,7 @@ static void __stdcall serial_thread(void* context) {
     KeSetTimer(&timer, due_time, NULL);
 
     while (true) {
-        KeWaitForSingleObject(&timer, Executive, KernelMode, false, nullptr);
+        KeWaitForSingleObject(&timer, Executive, KernelMode, false, NULL);
 
         {
             UNICODE_STRING us;
@@ -60,7 +60,7 @@ static void __stdcall serial_thread(void* context) {
 
     KeCancelTimer(&timer);
 
-    logger->serial_thread_handle = nullptr;
+    logger->serial_thread_handle = NULL;
 
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
@@ -70,7 +70,7 @@ void init_serial_logger() {
     UNICODE_STRING us;
 
     logger->unloading = false;
-    logger->serial_thread_handle = nullptr;
+    logger->serial_thread_handle = NULL;
 
     ExInitializeResourceLite(&logger->log_lock);
 
@@ -81,7 +81,7 @@ void init_serial_logger() {
     if (!NT_SUCCESS(Status)) {
         ERR("IoGetDeviceObjectPointer returned %08x\n", Status);
 
-        Status = PsCreateSystemThread(&logger->serial_thread_handle, 0, nullptr, nullptr, nullptr, serial_thread, logger);
+        Status = PsCreateSystemThread(&logger->serial_thread_handle, 0, NULL, NULL, NULL, serial_thread, logger);
 
         if (!NT_SUCCESS(Status)) {
             ERR("PsCreateSystemThread returned %08x\n", Status);
@@ -208,7 +208,7 @@ void log(const char* func, const char* msg, ...) {
 
         Irp->Flags = IRP_BUFFERED_IO;
     } else if (logger->comdo->Flags & DO_DIRECT_IO) {
-        Irp->MdlAddress = IoAllocateMdl((void*)buf2, length, false, false, nullptr);
+        Irp->MdlAddress = IoAllocateMdl((void*)buf2, length, false, false, NULL);
         if (!Irp->MdlAddress) {
             DbgPrint("IoAllocateMdl failed\n");
             goto exit;

@@ -63,7 +63,7 @@ char get_drive_letter(HANDLE h, const UNICODE_STRING& name) {
     MOUNTMGR_MOUNT_POINTS points;
     IO_STATUS_BLOCK iosb;
 
-    Status = NtDeviceIoControlFile(h, nullptr, nullptr, nullptr, &iosb, IOCTL_MOUNTMGR_QUERY_POINTS,
+    Status = NtDeviceIoControlFile(h, NULL, NULL, NULL, &iosb, IOCTL_MOUNTMGR_QUERY_POINTS,
                                    mmmp, mmmp_len, &points, sizeof(points));
 
     if (Status == STATUS_BUFFER_OVERFLOW && points.Size > 0) {
@@ -75,7 +75,7 @@ char get_drive_letter(HANDLE h, const UNICODE_STRING& name) {
             goto end;
         }
 
-        Status = NtDeviceIoControlFile(h, nullptr, nullptr, nullptr, &iosb, IOCTL_MOUNTMGR_QUERY_POINTS,
+        Status = NtDeviceIoControlFile(h, NULL, NULL, NULL, &iosb, IOCTL_MOUNTMGR_QUERY_POINTS,
                                        mmmp, mmmp_len, points2, points.Size);
 
         if (!NT_SUCCESS(Status)) {
@@ -125,7 +125,7 @@ NTSTATUS remove_drive_letter(HANDLE h, char c) {
     MOUNTMGR_MOUNT_POINTS points;
     IO_STATUS_BLOCK iosb;
 
-    Status = NtDeviceIoControlFile(h, nullptr, nullptr, nullptr, &iosb, IOCTL_MOUNTMGR_DELETE_POINTS,
+    Status = NtDeviceIoControlFile(h, NULL, NULL, NULL, &iosb, IOCTL_MOUNTMGR_DELETE_POINTS,
                                    mmmp, mmmp_len, &points, sizeof(points));
 
     if (Status == STATUS_BUFFER_OVERFLOW && points.Size > 0) {
@@ -136,7 +136,7 @@ NTSTATUS remove_drive_letter(HANDLE h, char c) {
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
-        Status = NtDeviceIoControlFile(h, nullptr, nullptr, nullptr, &iosb, IOCTL_MOUNTMGR_DELETE_POINTS,
+        Status = NtDeviceIoControlFile(h, NULL, NULL, NULL, &iosb, IOCTL_MOUNTMGR_DELETE_POINTS,
                                        mmmp, mmmp_len, points2, points.Size);
 
         ExFreePool(points2);

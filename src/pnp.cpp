@@ -322,7 +322,7 @@ NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     }
 
     if (top_level)
-        IoSetTopLevelIrp(nullptr);
+        IoSetTopLevelIrp(NULL);
 
     FsRtlExitFileSystem();
 
@@ -389,7 +389,7 @@ static NTSTATUS add_set_device(set_pdo* pdo) {
 
     ExInitializeResourceLite(&sd->lock);
 
-    Status = IoRegisterDeviceInterface(pdo->pdo, &GUID_DEVINTERFACE_VOLUME, nullptr, &pdo->bus_name);
+    Status = IoRegisterDeviceInterface(pdo->pdo, &GUID_DEVINTERFACE_VOLUME, NULL, &pdo->bus_name);
     if (!NT_SUCCESS(Status))
         WARN("IoRegisterDeviceInterface returned %08x\n", Status);
 
@@ -417,7 +417,7 @@ end:
 NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject) {
     TRACE("(%p, %p)\n", DriverObject, PhysicalDeviceObject);
 
-    set_pdo* sd = nullptr;
+    set_pdo* sd = NULL;
 
     ExAcquireResourceSharedLite(&dev_lock, true);
 

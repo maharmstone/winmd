@@ -233,7 +233,7 @@ NTSTATUS drv_read(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     }
 
     if (top_level)
-        IoSetTopLevelIrp(nullptr);
+        IoSetTopLevelIrp(NULL);
 
     FsRtlExitFileSystem();
 
@@ -275,7 +275,7 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
 
         for (uint32_t i = 0; i < data_disks; i++) {
             ULONG index;
-            io_context* last = nullptr;
+            io_context* last = NULL;
             ULONG runlength = RtlFindFirstRunClear(&valid_bmp, &index);
 
             while (runlength != 0) {
@@ -313,7 +313,7 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
 
                             last->Status = STATUS_SUCCESS;
 
-                            last->mdl = nullptr;
+                            last->mdl = NULL;
 
                             InsertTailList(&ctxs, &last->list_entry);
 
@@ -346,7 +346,7 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
                 PIO_STACK_LOCATION IrpSp = IoGetNextIrpStackLocation(ctx->Irp);
                 IrpSp->MajorFunction = IRP_MJ_READ;
 
-                ctx->mdl = IoAllocateMdl(ctx->va2, (ULONG)(ctx->stripe_end - ctx->stripe_start), false, false, nullptr);
+                ctx->mdl = IoAllocateMdl(ctx->va2, (ULONG)(ctx->stripe_end - ctx->stripe_start), false, false, NULL);
                 if (!ctx->mdl) {
                     ERR("IoAllocateMdl failed\n");
                     Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -372,7 +372,7 @@ static NTSTATUS flush_partial_chunk(set_pdo* pdo, partial_chunk* pc) {
                 io_context* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context, list_entry);
 
                 if (ctx->Status == STATUS_PENDING) {
-                    KeWaitForSingleObject(&ctx->Event, Executive, KernelMode, false, nullptr);
+                    KeWaitForSingleObject(&ctx->Event, Executive, KernelMode, false, NULL);
                     ctx->Status = ctx->iosb.Status;
                 }
 
@@ -443,10 +443,10 @@ void __stdcall flush_thread(void* context) {
 
     due_time.QuadPart = flush_interval * -10000000ll;
 
-    KeSetTimer(&sd->flush_thread_timer, due_time, nullptr);
+    KeSetTimer(&sd->flush_thread_timer, due_time, NULL);
 
     while (true) {
-        KeWaitForSingleObject(&sd->flush_thread_timer, Executive, KernelMode, false, nullptr);
+        KeWaitForSingleObject(&sd->flush_thread_timer, Executive, KernelMode, false, NULL);
 
         if (sd->loaded)
             flush_chunks(sd);
@@ -454,7 +454,7 @@ void __stdcall flush_thread(void* context) {
         if (sd->readonly)
             break;
 
-        KeSetTimer(&sd->flush_thread_timer, due_time, nullptr);
+        KeSetTimer(&sd->flush_thread_timer, due_time, NULL);
     }
 
     ObDereferenceObject(sd->pdo);
@@ -647,7 +647,7 @@ NTSTATUS drv_write(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     }
 
     if (top_level)
-        IoSetTopLevelIrp(nullptr);
+        IoSetTopLevelIrp(NULL);
 
     FsRtlExitFileSystem();
 

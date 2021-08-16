@@ -107,7 +107,7 @@ NTSTATUS write_raid1(set_pdo* pdo, PIRP Irp) {
 
     for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].Status == STATUS_PENDING) {
-            KeWaitForSingleObject(&ctxs[i].Event, Executive, KernelMode, false, nullptr);
+            KeWaitForSingleObject(&ctxs[i].Event, Executive, KernelMode, false, NULL);
             ctxs[i].Status = ctxs[i].iosb.Status;
         }
 

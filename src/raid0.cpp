@@ -44,8 +44,8 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     uint64_t offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Read.Length;
     bool mdl_locked = true;
-    uint8_t* tmpbuf = nullptr;
-    PMDL tmpmdl = nullptr;
+    uint8_t* tmpbuf = NULL;
+    PMDL tmpmdl = NULL;
 
     if (pdo->array_info.chunksize == 0 || (pdo->array_info.chunksize * 512) % PAGE_SIZE != 0)
         return STATUS_INTERNAL_ERROR;
@@ -125,7 +125,7 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
             IrpSp2->MajorFunction = IRP_MJ_READ;
 
-            ctxs[i].mdl = IoAllocateMdl(nullptr, (ULONG)(ctxs[i].stripe_end - ctxs[i].stripe_start), false, false, nullptr);
+            ctxs[i].mdl = IoAllocateMdl(NULL, (ULONG)(ctxs[i].stripe_end - ctxs[i].stripe_start), false, false, NULL);
             if (!ctxs[i].mdl) {
                 ERR("IoAllocateMdl failed\n");
                 Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -176,7 +176,7 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             goto end;
         }
 
-        tmpmdl = IoAllocateMdl(tmpbuf, length, false, false, nullptr);
+        tmpmdl = IoAllocateMdl(tmpbuf, length, false, false, NULL);
         if (!tmpmdl) {
             ERR("IoAllocateMdl failed\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -246,7 +246,7 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].Status == STATUS_PENDING) {
-            KeWaitForSingleObject(&ctxs[i].Event, Executive, KernelMode, false, nullptr);
+            KeWaitForSingleObject(&ctxs[i].Event, Executive, KernelMode, false, NULL);
             ctxs[i].Status = ctxs[i].iosb.Status;
         }
 
@@ -288,9 +288,9 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     uint64_t offset = IrpSp->Parameters.Write.ByteOffset.QuadPart;
     uint32_t length = IrpSp->Parameters.Write.Length;
     bool mdl_locked = true;
-    uint8_t* tmpbuf = nullptr;
-    PMDL tmpmdl = nullptr;
-    io_context_raid0* ctxs = nullptr;
+    uint8_t* tmpbuf = NULL;
+    PMDL tmpmdl = NULL;
+    io_context_raid0* ctxs = NULL;
     io_context_raid0 first_bit;
 
     if (pdo->array_info.chunksize == 0 || (pdo->array_info.chunksize * 512) % PAGE_SIZE != 0)
@@ -343,8 +343,8 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
         }
     }
 
-    first_bit.Irp = nullptr;
-    first_bit.mdl = nullptr;
+    first_bit.Irp = NULL;
+    first_bit.mdl = NULL;
 
     if (skip_first != 0) {
         first_bit.sc = pdo->child_list[start_chunk % pdo->array_info.raid_disks];
@@ -361,7 +361,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
         PVOID addr = MmGetMdlVirtualAddress(Irp->MdlAddress);
 
-        first_bit.mdl = IoAllocateMdl(addr, skip_first, false, false, nullptr);
+        first_bit.mdl = IoAllocateMdl(addr, skip_first, false, false, NULL);
         if (!first_bit.mdl) {
             ERR("IoAllocateMdl failed\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -433,7 +433,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             PIO_STACK_LOCATION IrpSp2 = IoGetNextIrpStackLocation(ctxs[i].Irp);
             IrpSp2->MajorFunction = IRP_MJ_WRITE;
 
-            ctxs[i].mdl = IoAllocateMdl(nullptr, (ULONG)(ctxs[i].stripe_end - ctxs[i].stripe_start), false, false, nullptr);
+            ctxs[i].mdl = IoAllocateMdl(NULL, (ULONG)(ctxs[i].stripe_end - ctxs[i].stripe_start), false, false, NULL);
             if (!ctxs[i].mdl) {
                 ERR("IoAllocateMdl failed\n");
                 Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -466,7 +466,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             goto end;
         }
 
-        tmpmdl = IoAllocateMdl(tmpbuf, length, false, false, nullptr);
+        tmpmdl = IoAllocateMdl(tmpbuf, length, false, false, NULL);
         if (!tmpmdl) {
             ERR("IoAllocateMdl failed\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -546,7 +546,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (ctxs[i].Status == STATUS_PENDING) {
-            KeWaitForSingleObject(&ctxs[i].Event, Executive, KernelMode, false, nullptr);
+            KeWaitForSingleObject(&ctxs[i].Event, Executive, KernelMode, false, NULL);
             ctxs[i].Status = ctxs[i].iosb.Status;
         }
 
@@ -556,7 +556,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     if (skip_first != 0) {
         if (first_bit.Status == STATUS_PENDING) {
-            KeWaitForSingleObject(&first_bit.Event, Executive, KernelMode, false, nullptr);
+            KeWaitForSingleObject(&first_bit.Event, Executive, KernelMode, false, NULL);
             first_bit.Status = first_bit.iosb.Status;
         }
 

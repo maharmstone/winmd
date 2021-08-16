@@ -70,7 +70,7 @@ static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t sta
 
         last->Status = STATUS_SUCCESS;
 
-        last->mdl = nullptr;
+        last->mdl = NULL;
 
         InsertTailList(&ctxs, &last->list_entry);
 
@@ -80,7 +80,7 @@ static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t sta
             goto fail;
         }
 
-        last->mdl = IoAllocateMdl(va, io_length, false, false, nullptr);
+        last->mdl = IoAllocateMdl(va, io_length, false, false, NULL);
         if (!last->mdl) {
             ERR("IoAllocateMdl failed\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -122,7 +122,7 @@ static NTSTATUS io_linear2(set_pdo* pdo, PIRP Irp, uint64_t offset, uint32_t sta
         io_context_linear* ctx = CONTAINING_RECORD(RemoveHeadList(&ctxs), io_context_linear, list_entry);
 
         if (ctx->Status == STATUS_PENDING) {
-            KeWaitForSingleObject(&ctx->Event, Executive, KernelMode, false, nullptr);
+            KeWaitForSingleObject(&ctx->Event, Executive, KernelMode, false, NULL);
             ctx->Status = ctx->iosb.Status;
         }
 
