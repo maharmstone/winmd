@@ -208,10 +208,6 @@ NTSTATUS set_device::read(PIRP Irp, bool* no_complete) {
     }
 }
 
-NTSTATUS device::read(PIRP, bool*) {
-    return STATUS_INVALID_DEVICE_REQUEST;
-}
-
 NTSTATUS drv_read(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     NTSTATUS Status;
     bool top_level;
@@ -224,7 +220,14 @@ NTSTATUS drv_read(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     bool no_complete = false;
 
-    Status = dev->read(Irp, &no_complete);
+    switch (dev->type) {
+        case device_type::set:
+            Status = static_cast<set_device*>(dev)->read(Irp, &no_complete);
+            break;
+
+        default:
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+    }
 
     if (!no_complete) {
         Irp->IoStatus.Status = Status;
@@ -621,10 +624,6 @@ end:
     return Status;
 }
 
-NTSTATUS device::write(PIRP, bool*) {
-    return STATUS_INVALID_DEVICE_REQUEST;
-}
-
 NTSTATUS drv_write(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     NTSTATUS Status;
     bool top_level;
@@ -637,7 +636,14 @@ NTSTATUS drv_write(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     bool no_complete = false;
 
-    Status = dev->write(Irp, &no_complete);
+    switch (dev->type) {
+        case device_type::set:
+            Status = static_cast<set_device*>(dev)->write(Irp, &no_complete);
+            break;
+
+        default:
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+    }
 
     if (!no_complete) {
         Irp->IoStatus.Status = Status;

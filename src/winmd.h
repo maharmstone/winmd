@@ -101,24 +101,14 @@ enum class device_type {
 class device {
 public:
     enum device_type type;
-
-    virtual NTSTATUS create(PIRP Irp);
-    virtual NTSTATUS read(PIRP Irp, bool* no_complete);
-    virtual NTSTATUS write(PIRP Irp, bool* no_complete);
-    virtual NTSTATUS device_control(PIRP Irp);
-    virtual NTSTATUS close(PIRP Irp);
-    virtual NTSTATUS pnp(PIRP Irp, bool* no_complete);
-    virtual NTSTATUS shutdown(PIRP Irp);
-    virtual NTSTATUS power(PIRP Irp);
-    virtual NTSTATUS system_control(PIRP Irp, bool* no_complete);
 };
 
 class control_device : public device {
 public:
-    NTSTATUS create(PIRP Irp) override;
-    NTSTATUS pnp(PIRP Irp, bool* no_complete) override;
-    NTSTATUS power(PIRP Irp) override;
-    NTSTATUS system_control(PIRP Irp, bool* no_complete) override;
+    NTSTATUS create(PIRP Irp);
+    NTSTATUS pnp(PIRP Irp, bool* no_complete);
+    NTSTATUS power(PIRP Irp);
+    NTSTATUS system_control(PIRP Irp, bool* no_complete);
 
     PDEVICE_OBJECT buspdo;
     PDEVICE_OBJECT attached_device;
@@ -247,13 +237,13 @@ public:
         ExDeleteResourceLite(&lock);
     }
 
-    NTSTATUS create(PIRP Irp) override;
-    NTSTATUS close(PIRP Irp) override;
-    NTSTATUS pnp(PIRP Irp, bool* no_complete) override;
-    NTSTATUS device_control(PIRP Irp) override;
-    NTSTATUS system_control(PIRP Irp, bool* no_complete) override;
-    NTSTATUS read(PIRP Irp, bool* no_complete) override;
-    NTSTATUS write(PIRP Irp, bool* no_complete) override;
+    NTSTATUS create(PIRP Irp);
+    NTSTATUS close(PIRP Irp);
+    NTSTATUS pnp(PIRP Irp, bool* no_complete);
+    NTSTATUS device_control(PIRP Irp);
+    NTSTATUS system_control(PIRP Irp, bool* no_complete);
+    NTSTATUS read(PIRP Irp, bool* no_complete);
+    NTSTATUS write(PIRP Irp, bool* no_complete);
 
     set_pdo* pdo;
     PDEVICE_OBJECT devobj;
@@ -267,10 +257,10 @@ public:
     set_pdo();
     ~set_pdo();
 
-    NTSTATUS create(PIRP Irp) override;
-    NTSTATUS close(PIRP Irp) override;
-    NTSTATUS pnp(PIRP Irp, bool* no_complete) override;
-    NTSTATUS shutdown(PIRP Irp) override;
+    NTSTATUS create(PIRP Irp);
+    NTSTATUS close(PIRP Irp);
+    NTSTATUS pnp(PIRP Irp, bool* no_complete);
+    NTSTATUS shutdown(PIRP Irp);
 
     friend set_device;
 

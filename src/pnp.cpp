@@ -36,7 +36,35 @@ NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     bool no_complete = false;
 
-    Status = dev->pnp(Irp, &no_complete);
+    switch (dev->type) {
+        case device_type::control:
+            Status = static_cast<control_device*>(dev)->pnp(Irp, &no_complete);
+            break;
+
+        case device_type::set:
+            Status = static_cast<set_device*>(dev)->pnp(Irp, &no_complete);
+            break;
+
+        case device_type::pdo:
+            Status = static_cast<set_pdo*>(dev)->pnp(Irp, &no_complete);
+            break;
+
+        default: {
+            auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+            switch (IrpSp->MinorFunction) {
+                case IRP_MN_SURPRISE_REMOVAL:
+                case IRP_MN_CANCEL_REMOVE_DEVICE:
+                case IRP_MN_CANCEL_STOP_DEVICE:
+                case IRP_MN_REMOVE_DEVICE:
+                    Status = STATUS_SUCCESS;
+                    break;
+
+                default:
+                    Status = Irp->IoStatus.Status;
+            }
+        }
+    }
 
     if (!no_complete) {
         Irp->IoStatus.Status = Status;
@@ -132,20 +160,6 @@ NTSTATUS set_pdo::pnp(PIRP Irp, bool*) {
                     return Irp->IoStatus.Status;
             }
 
-    }
-
-    return Irp->IoStatus.Status;
-}
-
-NTSTATUS device::pnp(PIRP Irp, bool*) {
-    auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
-
-    switch (IrpSp->MinorFunction) {
-        case IRP_MN_SURPRISE_REMOVAL:
-        case IRP_MN_CANCEL_REMOVE_DEVICE:
-        case IRP_MN_CANCEL_STOP_DEVICE:
-        case IRP_MN_REMOVE_DEVICE:
-            return STATUS_SUCCESS;
     }
 
     return Irp->IoStatus.Status;

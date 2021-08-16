@@ -1008,29 +1008,6 @@ end:
     return STATUS_SUCCESS;
 }
 
-NTSTATUS device::create(PIRP) {
-    return STATUS_INVALID_DEVICE_REQUEST;
-}
-
-NTSTATUS device::close(PIRP) {
-    return STATUS_INVALID_DEVICE_REQUEST;
-}
-
-NTSTATUS device::device_control(PIRP) {
-    return STATUS_INVALID_DEVICE_REQUEST;
-}
-
-NTSTATUS device::shutdown(PIRP) {
-    return STATUS_INVALID_DEVICE_REQUEST;
-}
-
-NTSTATUS device::power(PIRP Irp) {
-    NTSTATUS Status = Irp->IoStatus.Status;
-    PoStartNextPowerIrp(Irp);
-
-    return Status;
-}
-
 NTSTATUS control_device::power(PIRP Irp) {
     NTSTATUS Status;
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -1062,7 +1039,23 @@ NTSTATUS drv_create(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     top_level = is_top_level(Irp);
 
     auto dev = (device*)DeviceObject->DeviceExtension;
-    Status = dev->create(Irp);
+
+    switch (dev->type) {
+        case device_type::control:
+            Status = static_cast<control_device*>(dev)->create(Irp);
+            break;
+
+        case device_type::set:
+            Status = static_cast<set_device*>(dev)->create(Irp);
+            break;
+
+        case device_type::pdo:
+            Status = static_cast<set_pdo*>(dev)->create(Irp);
+            break;
+
+        default:
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+    }
 
     Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -1084,7 +1077,15 @@ NTSTATUS drv_device_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     top_level = is_top_level(Irp);
 
     auto dev = (device*)DeviceObject->DeviceExtension;
-    Status = dev->device_control(Irp);
+
+    switch (dev->type) {
+        case device_type::set:
+            Status = static_cast<set_device*>(dev)->device_control(Irp);
+            break;
+
+        default:
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+    }
 
     Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -1106,7 +1107,15 @@ NTSTATUS drv_shutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     top_level = is_top_level(Irp);
 
     auto dev = (device*)DeviceObject->DeviceExtension;
-    Status = dev->shutdown(Irp);
+
+    switch (dev->type) {
+        case device_type::pdo:
+            Status = static_cast<set_pdo*>(dev)->shutdown(Irp);
+            break;
+
+        default:
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+    }
 
     Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -1128,7 +1137,17 @@ NTSTATUS drv_power(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     top_level = is_top_level(Irp);
 
     auto dev = (device*)DeviceObject->DeviceExtension;
-    Status = dev->power(Irp);
+
+    switch (dev->type) {
+        case device_type::control:
+            Status = static_cast<control_device*>(dev)->power(Irp);
+            break;
+
+        default:
+            Status = Irp->IoStatus.Status;
+            PoStartNextPowerIrp(Irp);
+            break;
+    }
 
     Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -1156,7 +1175,15 @@ static NTSTATUS drv_close(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     top_level = is_top_level(Irp);
 
     auto dev = (device*)DeviceObject->DeviceExtension;
-    Status = dev->close(Irp);
+
+    switch (dev->type) {
+        case device_type::set:
+            Status = static_cast<set_device*>(dev)->close(Irp);
+            break;
+
+        default:
+            Status = STATUS_INVALID_DEVICE_REQUEST;
+    }
 
     Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -1235,10 +1262,6 @@ void read_registry(PUNICODE_STRING regpath) {
     ZwClose(h);
 }
 
-NTSTATUS device::system_control(PIRP Irp, bool*) {
-    return Irp->IoStatus.Status;
-}
-
 NTSTATUS set_device::system_control(PIRP Irp, bool* no_complete) {
     *no_complete = true;
 
@@ -1265,7 +1288,18 @@ static NTSTATUS drv_system_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     bool no_complete = false;
 
-    Status = dev->system_control(Irp, &no_complete);
+    switch (dev->type) {
+        case device_type::control:
+            Status = static_cast<control_device*>(dev)->system_control(Irp, &no_complete);
+            break;
+
+        case device_type::set:
+            Status = static_cast<set_device*>(dev)->system_control(Irp, &no_complete);
+            break;
+
+        default:
+            Status = Irp->IoStatus.Status;
+    }
 
     if (!no_complete) {
         Irp->IoStatus.Status = Status;
