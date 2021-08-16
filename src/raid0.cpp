@@ -17,6 +17,28 @@
 
 #include "winmd.h"
 
+struct io_context_raid0 {
+    PIRP Irp;
+    KEVENT Event;
+    IO_STATUS_BLOCK iosb;
+    NTSTATUS Status;
+    set_child* sc;
+    uint64_t stripe_start;
+    uint64_t stripe_end;
+    PMDL mdl;
+    PFN_NUMBER* pfns;
+    PFN_NUMBER* pfnp;
+};
+
+static NTSTATUS __stdcall io_completion_raid0(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
+    auto context = (io_context_raid0*)ctx;
+
+    context->iosb = Irp->IoStatus;
+    KeSetEvent(&context->Event, 0, FALSE);
+
+    return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
 NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
     uint64_t offset = IrpSp->Parameters.Read.ByteOffset.QuadPart;
@@ -64,13 +86,13 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks, &startoff, &startoffstripe);
     get_raid0_offset(offset + length - 1, stripe_length, pdo->array_info.raid_disks, &endoff, &endoffstripe);
 
-    auto ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * pdo->array_info.raid_disks, ALLOC_TAG);
+    auto ctxs = (io_context_raid0*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid0) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlZeroMemory(ctxs, sizeof(io_context) * pdo->array_info.raid_disks);
+    RtlZeroMemory(ctxs, sizeof(io_context_raid0) * pdo->array_info.raid_disks);
 
     for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (startoffstripe > i)
@@ -123,7 +145,7 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             KeInitializeEvent(&ctxs[i].Event, NotificationEvent, false);
             ctxs[i].Irp->UserEvent = &ctxs[i].Event;
 
-            IoSetCompletionRoutine(ctxs[i].Irp, io_completion, &ctxs[i], true, true, true);
+            IoSetCompletionRoutine(ctxs[i].Irp, io_completion_raid0, &ctxs[i], true, true, true);
         } else
             ctxs[i].Status = STATUS_SUCCESS;
     }
@@ -246,9 +268,6 @@ end:
         if (ctxs[i].mdl)
             IoFreeMdl(ctxs[i].mdl);
 
-        if (ctxs[i].va)
-            ExFreePool(ctxs[i].va);
-
         if (ctxs[i].Irp)
             IoFreeIrp(ctxs[i].Irp);
     }
@@ -271,7 +290,8 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     bool mdl_locked = true;
     uint8_t* tmpbuf = nullptr;
     PMDL tmpmdl = nullptr;
-    io_context* ctxs = nullptr;
+    io_context_raid0* ctxs = nullptr;
+    io_context_raid0 first_bit;
 
     if (pdo->array_info.chunksize == 0 || (pdo->array_info.chunksize * 512) % PAGE_SIZE != 0)
         return STATUS_INTERNAL_ERROR;
@@ -305,7 +325,6 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 
     uint32_t skip_first = offset % PAGE_SIZE ? (PAGE_SIZE - (offset % PAGE_SIZE)) : 0;
     NTSTATUS Status;
-    io_context first_bit;
 
     mdl_locked = Irp->MdlAddress->MdlFlags & (MDL_PAGES_LOCKED | MDL_PARTIAL);
 
@@ -324,6 +343,9 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
         }
     }
 
+    first_bit.Irp = nullptr;
+    first_bit.mdl = nullptr;
+
     if (skip_first != 0) {
         first_bit.sc = pdo->child_list[start_chunk % pdo->array_info.raid_disks];
         first_bit.Irp = IoAllocateIrp(first_bit.sc->device->StackSize, false);
@@ -331,7 +353,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
         if (!first_bit.Irp) {
             ERR("IoAllocateIrp failed\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
-            goto end;
+            goto end2;
         }
 
         auto IrpSp2 = IoGetNextIrpStackLocation(first_bit.Irp);
@@ -343,7 +365,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
         if (!first_bit.mdl) {
             ERR("IoAllocateMdl failed\n");
             Status = STATUS_INSUFFICIENT_RESOURCES;
-            goto end;
+            goto end2;
         }
 
         IoBuildPartialMdl(Irp->MdlAddress, first_bit.mdl, addr, skip_first);
@@ -364,7 +386,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
         KeInitializeEvent(&first_bit.Event, NotificationEvent, false);
         first_bit.Irp->UserEvent = &first_bit.Event;
 
-        IoSetCompletionRoutine(first_bit.Irp, io_completion, &first_bit, true, true, true);
+        IoSetCompletionRoutine(first_bit.Irp, io_completion_raid0, &first_bit, true, true, true);
 
         offset += skip_first;
         length -= skip_first;
@@ -373,13 +395,14 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     get_raid0_offset(offset, stripe_length, pdo->array_info.raid_disks, &startoff, &startoffstripe);
     get_raid0_offset(offset + length - 1, stripe_length, pdo->array_info.raid_disks, &endoff, &endoffstripe);
 
-    ctxs = (io_context*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context) * pdo->array_info.raid_disks, ALLOC_TAG);
+    ctxs = (io_context_raid0*)ExAllocatePoolWithTag(NonPagedPool, sizeof(io_context_raid0) * pdo->array_info.raid_disks, ALLOC_TAG);
     if (!ctxs) {
         ERR("out of memory\n");
-        return STATUS_INSUFFICIENT_RESOURCES;
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        goto end2;
     }
 
-    RtlZeroMemory(ctxs, sizeof(io_context) * pdo->array_info.raid_disks);
+    RtlZeroMemory(ctxs, sizeof(io_context_raid0) * pdo->array_info.raid_disks);
 
     for (unsigned int i = 0; i < pdo->array_info.raid_disks; i++) {
         if (startoffstripe > i)
@@ -430,7 +453,7 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
             KeInitializeEvent(&ctxs[i].Event, NotificationEvent, false);
             ctxs[i].Irp->UserEvent = &ctxs[i].Event;
 
-            IoSetCompletionRoutine(ctxs[i].Irp, io_completion, &ctxs[i], true, true, true);
+            IoSetCompletionRoutine(ctxs[i].Irp, io_completion_raid0, &ctxs[i], true, true, true);
         } else
             ctxs[i].Status = STATUS_SUCCESS;
     }
@@ -549,20 +572,24 @@ end:
         if (ctxs[i].mdl)
             IoFreeMdl(ctxs[i].mdl);
 
-        if (ctxs[i].va)
-            ExFreePool(ctxs[i].va);
-
         if (ctxs[i].Irp)
             IoFreeIrp(ctxs[i].Irp);
     }
 
     ExFreePool(ctxs);
 
+end2:
     if (tmpmdl)
         IoFreeMdl(tmpmdl);
 
     if (tmpbuf)
         ExFreePool(tmpbuf);
+
+    if (first_bit.mdl)
+        IoFreeMdl(first_bit.mdl);
+
+    if (first_bit.Irp)
+        IoFreeIrp(first_bit.Irp);
 
     return Status;
 }
