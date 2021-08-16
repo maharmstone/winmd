@@ -20,7 +20,6 @@
 #include <ntdddisk.h>
 #include <wdmguid.h>
 #include <mountdev.h>
-#include <new>
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -1358,8 +1357,7 @@ extern "C" NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_
         return Status;
     }
 
-    auto cde = new (master_devobj->DeviceExtension) control_device;
-
+    auto cde = (control_device*)master_devobj->DeviceExtension;
     cde->type = device_type::control;
 
     ExInitializeResourceLite(&dev_lock);

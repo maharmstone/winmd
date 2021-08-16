@@ -20,7 +20,6 @@
 #include <ntifs.h>
 #include <stdint.h>
 #include <mountdev.h>
-#include <new>
 
 #define DEBUG_PARANOID
 
