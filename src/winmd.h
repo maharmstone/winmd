@@ -29,24 +29,20 @@
 static const char16_t device_prefix[] = u"\\Device\\WinMD{";
 
 #ifdef _DEBUG
-class serial_logger {
-public:
-    serial_logger();
-    ~serial_logger();
-
-    void log(const char* func, const char* msg, ...);
-
-private:
-    void serial_thread();
-
-    PFILE_OBJECT comfo = nullptr;
-    PDEVICE_OBJECT comdo = nullptr;
+struct serial_logger {
+    PFILE_OBJECT comfo;
+    PDEVICE_OBJECT comdo;
     ERESOURCE log_lock;
-    bool unloading = false;
-    HANDLE serial_thread_handle = nullptr;
+    bool unloading;
+    HANDLE serial_thread_handle;
 };
 
 extern serial_logger* logger;
+
+// logger.cpp
+void log(const char* func, const char* msg, ...);
+void init_serial_logger();
+void stop_serial_logger();
 #endif
 
 #ifdef _MSC_VER
@@ -71,10 +67,10 @@ extern uint32_t debug_log_level;
 extern bool have_sse2;
 
 #ifdef _DEBUG
-#define ERR(s, ...) do { if (logger && debug_log_level > 0) { logger->log(funcname, s, ##__VA_ARGS__); } } while (0);
-#define FIXME(s, ...) do { if (logger && debug_log_level > 0) { logger->log(funcname, s, ##__VA_ARGS__); } } while (0);
-#define WARN(s, ...) do { if (logger && debug_log_level > 1) { logger->log(funcname, s, ##__VA_ARGS__); } } while (0);
-#define TRACE(s, ...) do { if (logger && debug_log_level > 2) { logger->log(funcname, s, ##__VA_ARGS__); } } while (0);
+#define ERR(s, ...) do { if (logger && debug_log_level > 0) { log(funcname, s, ##__VA_ARGS__); } } while (0);
+#define FIXME(s, ...) do { if (logger && debug_log_level > 0) { log(funcname, s, ##__VA_ARGS__); } } while (0);
+#define WARN(s, ...) do { if (logger && debug_log_level > 1) { log(funcname, s, ##__VA_ARGS__); } } while (0);
+#define TRACE(s, ...) do { if (logger && debug_log_level > 2) { log(funcname, s, ##__VA_ARGS__); } } while (0);
 #else
 #define ERR(s, ...) do { } while (0);
 #define FIXME(s, ...) do { } while (0);

@@ -28,7 +28,7 @@ typedef struct {
 
 static const WCHAR log_device[] = L"\\Device\\Serial0";
 
-void serial_logger::serial_thread() {
+static void __stdcall serial_thread(void* context) {
     LARGE_INTEGER due_time;
     KTIMER timer;
 
@@ -47,12 +47,12 @@ void serial_logger::serial_thread() {
             us.Buffer = (WCHAR*)log_device;
             us.Length = us.MaximumLength = sizeof(log_device) - sizeof(WCHAR);
 
-            NTSTATUS Status = IoGetDeviceObjectPointer(&us, FILE_WRITE_DATA, &comfo, &comdo);
+            NTSTATUS Status = IoGetDeviceObjectPointer(&us, FILE_WRITE_DATA, &logger->comfo, &logger->comdo);
             if (!NT_SUCCESS(Status))
                 ERR("IoGetDeviceObjectPointer returned %08x\n", Status);
         }
 
-        if (comdo)
+        if (logger->comdo)
             break;
 
         KeSetTimer(&timer, due_time, NULL);
@@ -60,29 +60,28 @@ void serial_logger::serial_thread() {
 
     KeCancelTimer(&timer);
 
-    serial_thread_handle = nullptr;
+    logger->serial_thread_handle = nullptr;
 
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
-serial_logger::serial_logger() {
+void init_serial_logger() {
     NTSTATUS Status;
     UNICODE_STRING us;
 
-    ExInitializeResourceLite(&log_lock);
+    logger->unloading = false;
+    logger->serial_thread_handle = nullptr;
+
+    ExInitializeResourceLite(&logger->log_lock);
 
     us.Buffer = (WCHAR*)log_device;
     us.Length = us.MaximumLength = sizeof(log_device) - sizeof(WCHAR);
 
-    Status = IoGetDeviceObjectPointer(&us, FILE_WRITE_DATA, &comfo, &comdo);
+    Status = IoGetDeviceObjectPointer(&us, FILE_WRITE_DATA, &logger->comfo, &logger->comdo);
     if (!NT_SUCCESS(Status)) {
         ERR("IoGetDeviceObjectPointer returned %08x\n", Status);
 
-        Status = PsCreateSystemThread(&serial_thread_handle, 0, nullptr, nullptr, nullptr, [](void* context) {
-            auto logger = (serial_logger*)context;
-
-            logger->serial_thread();
-        }, this);
+        Status = PsCreateSystemThread(&logger->serial_thread_handle, 0, nullptr, nullptr, nullptr, serial_thread, logger);
 
         if (!NT_SUCCESS(Status)) {
             ERR("PsCreateSystemThread returned %08x\n", Status);
@@ -91,20 +90,20 @@ serial_logger::serial_logger() {
     }
 }
 
-serial_logger::~serial_logger() {
-    unloading = true;
+void stop_serial_logger() {
+    logger->unloading = true;
 
     // sync
-    ExAcquireResourceExclusiveLite(&log_lock, TRUE);
-    ExReleaseResourceLite(&log_lock);
+    ExAcquireResourceExclusiveLite(&logger->log_lock, TRUE);
+    ExReleaseResourceLite(&logger->log_lock);
 
-    if (comfo)
-        ObDereferenceObject(comfo);
+    if (logger->comfo)
+        ObDereferenceObject(logger->comfo);
 
-    if (serial_thread_handle)
-        NtClose(serial_thread_handle);
+    if (logger->serial_thread_handle)
+        NtClose(logger->serial_thread_handle);
 
-    ExDeleteResourceLite(&log_lock);
+    ExDeleteResourceLite(&logger->log_lock);
 }
 
 static NTSTATUS __stdcall dbg_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
@@ -116,7 +115,7 @@ static NTSTATUS __stdcall dbg_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
-void serial_logger::log(const char* func, const char* msg, ...) {
+void log(const char* func, const char* msg, ...) {
     NTSTATUS Status;
     PIRP Irp;
     PIO_STACK_LOCATION IrpSp;
@@ -165,7 +164,7 @@ void serial_logger::log(const char* func, const char* msg, ...) {
         _vsnprintf(buf, buf_size - prefix_size, msg, ap);
     }
 
-    if (unloading || !comfo) {
+    if (logger->unloading || !logger->comfo) {
         DbgPrint(buf2);
 
         va_end(ap);
@@ -175,7 +174,7 @@ void serial_logger::log(const char* func, const char* msg, ...) {
         return;
     }
 
-    ExAcquireResourceSharedLite(&log_lock, TRUE);
+    ExAcquireResourceSharedLite(&logger->log_lock, true);
 
     auto length = (uint32_t)strlen(buf2);
 
@@ -193,7 +192,7 @@ void serial_logger::log(const char* func, const char* msg, ...) {
 
     KeInitializeEvent(&context->Event, NotificationEvent, false);
 
-    Irp = IoAllocateIrp(comdo->StackSize, false);
+    Irp = IoAllocateIrp(logger->comdo->StackSize, false);
 
     if (!Irp) {
         DbgPrint("IoAllocateIrp failed\n");
@@ -204,11 +203,11 @@ void serial_logger::log(const char* func, const char* msg, ...) {
     IrpSp = IoGetNextIrpStackLocation(Irp);
     IrpSp->MajorFunction = IRP_MJ_WRITE;
 
-    if (comdo->Flags & DO_BUFFERED_IO) {
+    if (logger->comdo->Flags & DO_BUFFERED_IO) {
         Irp->AssociatedIrp.SystemBuffer = (void*)buf2;
 
         Irp->Flags = IRP_BUFFERED_IO;
-    } else if (comdo->Flags & DO_DIRECT_IO) {
+    } else if (logger->comdo->Flags & DO_DIRECT_IO) {
         Irp->MdlAddress = IoAllocateMdl((void*)buf2, length, false, false, nullptr);
         if (!Irp->MdlAddress) {
             DbgPrint("IoAllocateMdl failed\n");
@@ -228,7 +227,7 @@ void serial_logger::log(const char* func, const char* msg, ...) {
 
     IoSetCompletionRoutine(Irp, dbg_completion, context, TRUE, TRUE, TRUE);
 
-    Status = IoCallDriver(comdo, Irp);
+    Status = IoCallDriver(logger->comdo, Irp);
 
     if (Status == STATUS_PENDING) {
         LARGE_INTEGER timeout;
@@ -239,7 +238,7 @@ void serial_logger::log(const char* func, const char* msg, ...) {
         Status = context->iosb.Status;
     }
 
-    if (comdo->Flags & DO_DIRECT_IO)
+    if (logger->comdo->Flags & DO_DIRECT_IO)
         IoFreeMdl(Irp->MdlAddress);
 
     if (!NT_SUCCESS(Status)) {
@@ -252,7 +251,7 @@ exit:
     ExFreePool(context);
 
 exit2:
-    ExReleaseResourceLite(&log_lock);
+    ExReleaseResourceLite(&logger->log_lock);
 
     va_end(ap);
 

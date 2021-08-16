@@ -781,7 +781,7 @@ static void __stdcall DriverUnload(PDRIVER_OBJECT DriverObject) {
 
 #ifdef _DEBUG
     if (logger) {
-        logger->~serial_logger();
+        stop_serial_logger();
         ExFreePool(logger);
     }
 #endif
@@ -1329,13 +1329,16 @@ extern "C" NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_
 
 #ifdef _DEBUG
     if (debug_log_level > 0) {
-        logger = ExAllocatePoolWithTag(NonPagedPool, sizeof(serial_logger), ALLOC_TAG);
+        NTSTATUS Status;
+        UNICODE_STRING us;
+
+        logger = (serial_logger*)ExAllocatePoolWithTag(NonPagedPool, sizeof(serial_logger), ALLOC_TAG);
         if (!logger) {
             ERR("out of memory\n");
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
-        new (logger) serial_logger;
+        init_serial_logger();
     }
 #endif
 
