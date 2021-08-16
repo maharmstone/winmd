@@ -24,59 +24,6 @@ extern ERESOURCE dev_lock;
 extern LIST_ENTRY dev_list;
 extern PDRIVER_OBJECT drvobj;
 
-NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
-    NTSTATUS Status;
-    bool top_level;
-
-    FsRtlEnterFileSystem();
-
-    top_level = is_top_level(Irp);
-
-    bool no_complete = false;
-
-    switch (*(enum device_type*)DeviceObject->DeviceExtension) {
-        case device_type::control:
-            Status = ((control_device*)(DeviceObject->DeviceExtension))->pnp(Irp, &no_complete);
-            break;
-
-        case device_type::set:
-            Status = ((set_device*)(DeviceObject->DeviceExtension))->pnp(Irp, &no_complete);
-            break;
-
-        case device_type::pdo:
-            Status = ((set_pdo*)(DeviceObject->DeviceExtension))->pnp(Irp, &no_complete);
-            break;
-
-        default: {
-            auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
-
-            switch (IrpSp->MinorFunction) {
-                case IRP_MN_SURPRISE_REMOVAL:
-                case IRP_MN_CANCEL_REMOVE_DEVICE:
-                case IRP_MN_CANCEL_STOP_DEVICE:
-                case IRP_MN_REMOVE_DEVICE:
-                    Status = STATUS_SUCCESS;
-                    break;
-
-                default:
-                    Status = Irp->IoStatus.Status;
-            }
-        }
-    }
-
-    if (!no_complete) {
-        Irp->IoStatus.Status = Status;
-        IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    }
-
-    if (top_level)
-        IoSetTopLevelIrp(nullptr);
-
-    FsRtlExitFileSystem();
-
-    return Status;
-}
-
 static NTSTATUS set_query_hardware_ids(PIRP Irp) {
     static const char16_t ids[] = u"WinMDVolume\0";
 
@@ -132,8 +79,8 @@ static NTSTATUS query_device_ids(mdraid_array_info* array_info, PIRP Irp) {
     return STATUS_SUCCESS;
 }
 
-NTSTATUS set_pdo::pnp(PIRP Irp, bool*) {
-    TRACE("(%p, %p)\n", this, Irp);
+static NTSTATUS pdo_pnp(set_pdo* pdo, PIRP Irp) {
+    TRACE("(%p, %p)\n", pdo, Irp);
 
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
@@ -152,7 +99,7 @@ NTSTATUS set_pdo::pnp(PIRP Irp, bool*) {
                     return set_query_hardware_ids(Irp);
 
                 case BusQueryDeviceID:
-                    return query_device_ids(&array_info, Irp);
+                    return query_device_ids(&pdo->array_info, Irp);
 
                 default:
                     return Irp->IoStatus.Status;
@@ -237,10 +184,10 @@ static NTSTATUS query_device_relations(PIRP Irp) {
     return STATUS_SUCCESS;
 }
 
-NTSTATUS control_device::pnp(PIRP Irp, bool* no_complete) {
+static NTSTATUS control_pnp(control_device* control, PIRP Irp, bool* no_complete) {
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
-    TRACE("(%p, %p)\n", this, Irp);
+    TRACE("(%p, %p)\n", control, Irp);
     TRACE("IrpSp->MinorFunction = %x\n", IrpSp->MinorFunction);
 
     switch (IrpSp->MinorFunction) {
@@ -283,13 +230,13 @@ NTSTATUS control_device::pnp(PIRP Irp, bool* no_complete) {
     *no_complete = true;
 
     IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(attached_device, Irp);
+    return IoCallDriver(control->attached_device, Irp);
 }
 
-NTSTATUS set_device::pnp(PIRP Irp, bool* no_complete) {
+static NTSTATUS set_pnp(set_device* set, PIRP Irp, bool* no_complete) {
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
-    TRACE("(%p, %p)\n", this, Irp);
+    TRACE("(%p, %p)\n", set, Irp);
 
     TRACE("PNP message %x\n", IrpSp->MinorFunction);
 
@@ -306,12 +253,12 @@ NTSTATUS set_device::pnp(PIRP Irp, bool* no_complete) {
             break;
 
         case IRP_MN_SURPRISE_REMOVAL:
-            if (open_count == 0) {
-                PDEVICE_OBJECT devobj = this->devobj;
+            if (set->open_count == 0) {
+                PDEVICE_OBJECT devobj = set->devobj;
 
-                IoDetachDevice(attached_device);
+                IoDetachDevice(set->attached_device);
 
-                this->set_device::~set_device();
+                set->set_device::~set_device();
                 IoDeleteDevice(devobj);
             }
 
@@ -326,7 +273,60 @@ NTSTATUS set_device::pnp(PIRP Irp, bool* no_complete) {
     *no_complete = true;
 
     IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(attached_device, Irp);
+    return IoCallDriver(set->attached_device, Irp);
+}
+
+NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
+    NTSTATUS Status;
+    bool top_level;
+
+    FsRtlEnterFileSystem();
+
+    top_level = is_top_level(Irp);
+
+    bool no_complete = false;
+
+    switch (*(enum device_type*)DeviceObject->DeviceExtension) {
+        case device_type::control:
+            Status = control_pnp((control_device*)(DeviceObject->DeviceExtension), Irp, &no_complete);
+            break;
+
+        case device_type::set:
+            Status = set_pnp((set_device*)(DeviceObject->DeviceExtension), Irp, &no_complete);
+            break;
+
+        case device_type::pdo:
+            Status = pdo_pnp((set_pdo*)(DeviceObject->DeviceExtension), Irp);
+            break;
+
+        default: {
+            auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+            switch (IrpSp->MinorFunction) {
+                case IRP_MN_SURPRISE_REMOVAL:
+                case IRP_MN_CANCEL_REMOVE_DEVICE:
+                case IRP_MN_CANCEL_STOP_DEVICE:
+                case IRP_MN_REMOVE_DEVICE:
+                    Status = STATUS_SUCCESS;
+                    break;
+
+                default:
+                    Status = Irp->IoStatus.Status;
+            }
+        }
+    }
+
+    if (!no_complete) {
+        Irp->IoStatus.Status = Status;
+        IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    }
+
+    if (top_level)
+        IoSetTopLevelIrp(nullptr);
+
+    FsRtlExitFileSystem();
+
+    return Status;
 }
 
 static NTSTATUS add_set_device(set_pdo* pdo) {

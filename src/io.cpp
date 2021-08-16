@@ -151,13 +151,13 @@ uint32_t get_physical_stripe(set_pdo* pdo, uint32_t stripe, uint32_t parity) {
     }
 }
 
-NTSTATUS set_device::read(PIRP Irp, bool* no_complete) {
-    TRACE("(%p)\n", Irp);
+static NTSTATUS set_read(set_device* set, PIRP Irp, bool* no_complete) {
+    TRACE("(%p, %p)\n", set, Irp);
 
-    if (!pdo)
+    if (!set->pdo)
         return STATUS_INVALID_DEVICE_REQUEST;
 
-    if (!pdo->loaded)
+    if (!set->pdo->loaded)
         return STATUS_DEVICE_NOT_READY;
 
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -167,15 +167,15 @@ NTSTATUS set_device::read(PIRP Irp, bool* no_complete) {
         return STATUS_INVALID_PARAMETER;
     }
 
-    if ((uint64_t)IrpSp->Parameters.Read.ByteOffset.QuadPart >= pdo->array_size) {
+    if ((uint64_t)IrpSp->Parameters.Read.ByteOffset.QuadPart >= set->pdo->array_size) {
         WARN("trying to read past end of device\n");
         return STATUS_INVALID_PARAMETER;
     }
 
-    if ((uint64_t)IrpSp->Parameters.Read.ByteOffset.QuadPart + IrpSp->Parameters.Read.Length > pdo->array_size)
-        IrpSp->Parameters.Read.Length = (ULONG)(pdo->array_size - IrpSp->Parameters.Read.ByteOffset.QuadPart);
+    if ((uint64_t)IrpSp->Parameters.Read.ByteOffset.QuadPart + IrpSp->Parameters.Read.Length > set->pdo->array_size)
+        IrpSp->Parameters.Read.Length = (ULONG)(set->pdo->array_size - IrpSp->Parameters.Read.ByteOffset.QuadPart);
 
-    if (IrpSp->Parameters.Read.ByteOffset.QuadPart % devobj->SectorSize || IrpSp->Parameters.Read.Length % devobj->SectorSize)
+    if (IrpSp->Parameters.Read.ByteOffset.QuadPart % set->devobj->SectorSize || IrpSp->Parameters.Read.Length % set->devobj->SectorSize)
         return STATUS_INVALID_PARAMETER;
 
     Irp->IoStatus.Information = IrpSp->Parameters.Read.Length;
@@ -183,25 +183,25 @@ NTSTATUS set_device::read(PIRP Irp, bool* no_complete) {
     if (IrpSp->Parameters.Read.Length == 0)
         return STATUS_SUCCESS;
 
-    switch (pdo->array_info.level) {
+    switch (set->pdo->array_info.level) {
         case RAID_LEVEL_0:
-            return read_raid0(pdo, Irp, no_complete);
+            return read_raid0(set->pdo, Irp, no_complete);
 
         case RAID_LEVEL_1:
-            return read_raid1(pdo, Irp, no_complete);
+            return read_raid1(set->pdo, Irp, no_complete);
 
         case RAID_LEVEL_4:
         case RAID_LEVEL_5:
-            return read_raid45(pdo, Irp, no_complete);
+            return read_raid45(set->pdo, Irp, no_complete);
 
         case RAID_LEVEL_6:
-            return read_raid6(pdo, Irp, no_complete);
+            return read_raid6(set->pdo, Irp, no_complete);
 
         case RAID_LEVEL_10:
-            return read_raid10(pdo, Irp, no_complete);
+            return read_raid10(set->pdo, Irp, no_complete);
 
         case RAID_LEVEL_LINEAR:
-            return read_linear(pdo, Irp, no_complete);
+            return read_linear(set->pdo, Irp, no_complete);
 
         default:
             return STATUS_INVALID_DEVICE_REQUEST;
@@ -220,7 +220,7 @@ NTSTATUS drv_read(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::set:
-            Status = ((set_device*)(DeviceObject->DeviceExtension))->read(Irp, &no_complete);
+            Status = set_read((set_device*)(DeviceObject->DeviceExtension), Irp, &no_complete);
             break;
 
         default:
@@ -535,23 +535,23 @@ end:
     return Status;
 }
 
-NTSTATUS set_device::write(PIRP Irp, bool* no_complete) {
+static NTSTATUS set_write(set_device* set, PIRP Irp, bool* no_complete) {
     NTSTATUS Status;
     PIO_STACK_LOCATION IrpSp;
 
-    TRACE("(%p)\n", Irp);
+    TRACE("(%p, %p)\n", set, Irp);
 
-    if (!pdo)
+    if (!set->pdo)
         return STATUS_INVALID_DEVICE_REQUEST;
 
-    ExAcquireResourceSharedLite(&pdo->lock, true);
+    ExAcquireResourceSharedLite(&set->pdo->lock, true);
 
-    if (!pdo->loaded) {
+    if (!set->pdo->loaded) {
         Status = STATUS_DEVICE_NOT_READY;
         goto end;
     }
 
-    if (pdo->readonly) {
+    if (set->pdo->readonly) {
         Status = STATUS_MEDIA_WRITE_PROTECTED;
         goto end;
     }
@@ -564,16 +564,16 @@ NTSTATUS set_device::write(PIRP Irp, bool* no_complete) {
         goto end;
     }
 
-    if ((uint64_t)IrpSp->Parameters.Write.ByteOffset.QuadPart >= pdo->array_size) {
+    if ((uint64_t)IrpSp->Parameters.Write.ByteOffset.QuadPart >= set->pdo->array_size) {
         WARN("trying to write past end of device\n");
         Status = STATUS_INVALID_PARAMETER;
         goto end;
     }
 
-    if ((uint64_t)IrpSp->Parameters.Write.ByteOffset.QuadPart + IrpSp->Parameters.Write.Length > pdo->array_size)
-        IrpSp->Parameters.Write.Length = (ULONG)(pdo->array_size - IrpSp->Parameters.Write.ByteOffset.QuadPart);
+    if ((uint64_t)IrpSp->Parameters.Write.ByteOffset.QuadPart + IrpSp->Parameters.Write.Length > set->pdo->array_size)
+        IrpSp->Parameters.Write.Length = (ULONG)(set->pdo->array_size - IrpSp->Parameters.Write.ByteOffset.QuadPart);
 
-    if (IrpSp->Parameters.Write.ByteOffset.QuadPart % devobj->SectorSize || IrpSp->Parameters.Write.Length % devobj->SectorSize) {
+    if (IrpSp->Parameters.Write.ByteOffset.QuadPart % set->devobj->SectorSize || IrpSp->Parameters.Write.Length % set->devobj->SectorSize) {
         Status = STATUS_INVALID_PARAMETER;
         goto end;
     }
@@ -585,30 +585,30 @@ NTSTATUS set_device::write(PIRP Irp, bool* no_complete) {
         goto end;
     }
 
-    switch (pdo->array_info.level) {
+    switch (set->pdo->array_info.level) {
         case RAID_LEVEL_0:
-            Status = write_raid0(pdo, Irp, no_complete);
+            Status = write_raid0(set->pdo, Irp, no_complete);
             break;
 
         case RAID_LEVEL_1:
-            Status = write_raid1(pdo, Irp);
+            Status = write_raid1(set->pdo, Irp);
             break;
 
         case RAID_LEVEL_4:
         case RAID_LEVEL_5:
-            Status = write_raid45(pdo, Irp, no_complete);
+            Status = write_raid45(set->pdo, Irp, no_complete);
             break;
 
         case RAID_LEVEL_6:
-            Status = write_raid6(pdo, Irp, no_complete);
+            Status = write_raid6(set->pdo, Irp, no_complete);
             break;
 
         case RAID_LEVEL_10:
-            Status = write_raid10(pdo, Irp);
+            Status = write_raid10(set->pdo, Irp);
             break;
 
         case RAID_LEVEL_LINEAR:
-            Status = write_linear(pdo, Irp, no_complete);
+            Status = write_linear(set->pdo, Irp, no_complete);
             break;
 
         default:
@@ -617,7 +617,7 @@ NTSTATUS set_device::write(PIRP Irp, bool* no_complete) {
     }
 
 end:
-    ExReleaseResourceLite(&pdo->lock);
+    ExReleaseResourceLite(&set->pdo->lock);
 
     return Status;
 }
@@ -634,7 +634,7 @@ NTSTATUS drv_write(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::set:
-            Status = ((set_device*)(DeviceObject->DeviceExtension))->write(Irp, &no_complete);
+            Status = set_write((set_device*)(DeviceObject->DeviceExtension), Irp, &no_complete);
             break;
 
         default:

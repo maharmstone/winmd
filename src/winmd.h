@@ -98,13 +98,7 @@ enum class device_type {
     pdo
 };
 
-class control_device {
-public:
-    NTSTATUS create(PIRP Irp);
-    NTSTATUS pnp(PIRP Irp, bool* no_complete);
-    NTSTATUS power(PIRP Irp);
-    NTSTATUS system_control(PIRP Irp, bool* no_complete);
-
+struct control_device {
     enum device_type type;
     PDEVICE_OBJECT buspdo;
     PDEVICE_OBJECT attached_device;
@@ -233,14 +227,6 @@ public:
         ExDeleteResourceLite(&lock);
     }
 
-    NTSTATUS create(PIRP Irp);
-    NTSTATUS close(PIRP Irp);
-    NTSTATUS pnp(PIRP Irp, bool* no_complete);
-    NTSTATUS device_control(PIRP Irp);
-    NTSTATUS system_control(PIRP Irp, bool* no_complete);
-    NTSTATUS read(PIRP Irp, bool* no_complete);
-    NTSTATUS write(PIRP Irp, bool* no_complete);
-
     enum device_type type;
     set_pdo* pdo;
     PDEVICE_OBJECT devobj;
@@ -253,13 +239,6 @@ class set_pdo {
 public:
     set_pdo();
     ~set_pdo();
-
-    NTSTATUS create(PIRP Irp);
-    NTSTATUS close(PIRP Irp);
-    NTSTATUS pnp(PIRP Irp, bool* no_complete);
-    NTSTATUS shutdown(PIRP Irp);
-
-    friend set_device;
 
     enum device_type type;
     ERESOURCE lock;

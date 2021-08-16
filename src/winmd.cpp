@@ -604,20 +604,16 @@ end:
     ExFreePool(sb);
 }
 
-NTSTATUS set_device::close(PIRP) {
-    if (InterlockedDecrement(&open_count) == 0 && pdo->found_devices == 0) {
-        PDEVICE_OBJECT devobj = this->devobj;
+static NTSTATUS set_close(set_device* set) {
+    if (InterlockedDecrement(&set->open_count) == 0 && set->pdo->found_devices == 0) {
+        PDEVICE_OBJECT devobj = set->devobj;
 
-        IoDetachDevice(attached_device);
+        IoDetachDevice(set->attached_device);
 
-        this->set_device::~set_device();
+        set->set_device::~set_device();
         IoDeleteDevice(devobj);
     }
 
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS set_pdo::close(PIRP) {
     return STATUS_SUCCESS;
 }
 
@@ -772,25 +768,13 @@ static void __stdcall DriverUnload(PDRIVER_OBJECT DriverObject) {
 #endif
 }
 
-NTSTATUS control_device::create(PIRP Irp) {
-    Irp->IoStatus.Information = FILE_OPENED;
-
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS set_device::create(PIRP Irp) {
-    if (pdo->found_devices == 0)
+static NTSTATUS set_create(set_device* set, PIRP Irp) {
+    if (set->pdo->found_devices == 0)
         return STATUS_DEVICE_NOT_READY;
 
     Irp->IoStatus.Information = FILE_OPENED;
 
-    InterlockedIncrement(&open_count);
-
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS set_pdo::create(PIRP Irp) {
-    Irp->IoStatus.Information = FILE_OPENED;
+    InterlockedIncrement(&set->open_count);
 
     return STATUS_SUCCESS;
 }
@@ -944,28 +928,28 @@ static NTSTATUS disk_get_length_info(uint64_t array_size, PIRP Irp) {
     return STATUS_SUCCESS;
 }
 
-NTSTATUS set_device::device_control(PIRP Irp) {
+static NTSTATUS set_device_control(set_device* set, PIRP Irp) {
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
-    if (!pdo)
+    if (!set->pdo)
         return STATUS_INVALID_DEVICE_REQUEST;
 
     switch (IrpSp->Parameters.DeviceIoControl.IoControlCode) {
         case IOCTL_MOUNTDEV_QUERY_DEVICE_NAME:
-            return mountdev_query_device_name(&pdo->array_info, Irp);
+            return mountdev_query_device_name(&set->pdo->array_info, Irp);
 
         case IOCTL_MOUNTDEV_QUERY_UNIQUE_ID:
-            return mountdev_query_unique_id(&pdo->array_info, Irp);
+            return mountdev_query_unique_id(&set->pdo->array_info, Irp);
 
         case IOCTL_STORAGE_CHECK_VERIFY:
         case IOCTL_DISK_CHECK_VERIFY:
-            return check_verify(pdo);
+            return check_verify(set->pdo);
 
         case IOCTL_DISK_GET_DRIVE_GEOMETRY:
-            return disk_get_drive_geometry(pdo->array_size, Irp, devobj);
+            return disk_get_drive_geometry(set->pdo->array_size, Irp, set->devobj);
 
         case IOCTL_DISK_GET_LENGTH_INFO:
-            return disk_get_length_info(pdo->array_size, Irp);
+            return disk_get_length_info(set->pdo->array_size, Irp);
 
         default:
             ERR("ioctl %x\n", IrpSp->Parameters.DeviceIoControl.IoControlCode);
@@ -973,42 +957,42 @@ NTSTATUS set_device::device_control(PIRP Irp) {
     }
 }
 
-NTSTATUS set_pdo::shutdown(PIRP Irp) {
-    TRACE("(%p, %p)\n", this, Irp);
+static NTSTATUS pdo_shutdown(set_pdo* pdo, PIRP Irp) {
+    TRACE("(%p, %p)\n", pdo, Irp);
 
-    ExAcquireResourceExclusiveLite(&lock, true);
+    ExAcquireResourceExclusiveLite(&pdo->lock, true);
 
-    if (readonly)
+    if (pdo->readonly)
         goto end;
 
-    readonly = true;
+    pdo->readonly = true;
 
-    if (flush_thread_handle) {
+    if (pdo->flush_thread_handle) {
         LARGE_INTEGER due_time;
 
-        KeCancelTimer(&flush_thread_timer);
+        KeCancelTimer(&pdo->flush_thread_timer);
 
         due_time.QuadPart = 0;
-        KeSetTimer(&flush_thread_timer, due_time, nullptr);
+        KeSetTimer(&pdo->flush_thread_timer, due_time, nullptr);
 
-        KeWaitForSingleObject(&flush_thread_finished, Executive, KernelMode, false, nullptr);
+        KeWaitForSingleObject(&pdo->flush_thread_finished, Executive, KernelMode, false, nullptr);
 
-        NtClose(flush_thread_handle);
-        flush_thread_handle = nullptr;
+        NtClose(pdo->flush_thread_handle);
+        pdo->flush_thread_handle = nullptr;
 
-        if (loaded)
-            flush_chunks(this);
+        if (pdo->loaded)
+            flush_chunks(pdo);
     }
 
     // FIXME - mark superblocks as clean(?)
 
 end:
-    ExReleaseResourceLite(&lock);
+    ExReleaseResourceLite(&pdo->lock);
 
     return STATUS_SUCCESS;
 }
 
-NTSTATUS control_device::power(PIRP Irp) {
+static NTSTATUS control_power(PIRP Irp) {
     NTSTATUS Status;
     auto IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
@@ -1040,15 +1024,13 @@ NTSTATUS drv_create(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::control:
-            Status = ((control_device*)(DeviceObject->DeviceExtension))->create(Irp);
+        case device_type::pdo:
+            Irp->IoStatus.Information = FILE_OPENED;
+            Status = STATUS_SUCCESS;
             break;
 
         case device_type::set:
-            Status = ((set_device*)(DeviceObject->DeviceExtension))->create(Irp);
-            break;
-
-        case device_type::pdo:
-            Status = ((set_pdo*)(DeviceObject->DeviceExtension))->create(Irp);
+            Status = set_create((set_device*)(DeviceObject->DeviceExtension), Irp);
             break;
 
         default:
@@ -1076,7 +1058,7 @@ NTSTATUS drv_device_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::set:
-            Status = ((set_device*)(DeviceObject->DeviceExtension))->device_control(Irp);
+            Status = set_device_control((set_device*)(DeviceObject->DeviceExtension), Irp);
             break;
 
         default:
@@ -1104,7 +1086,7 @@ NTSTATUS drv_shutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::pdo:
-            Status = ((set_pdo*)(DeviceObject->DeviceExtension))->shutdown(Irp);
+            Status = pdo_shutdown((set_pdo*)(DeviceObject->DeviceExtension), Irp);
             break;
 
         default:
@@ -1132,7 +1114,7 @@ NTSTATUS drv_power(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::control:
-            Status = ((control_device*)(DeviceObject->DeviceExtension))->power(Irp);
+            Status = control_power(Irp);
             break;
 
         default:
@@ -1168,7 +1150,11 @@ static NTSTATUS drv_close(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::set:
-            Status = ((set_device*)(DeviceObject->DeviceExtension))->close(Irp);
+            Status = set_close((set_device*)(DeviceObject->DeviceExtension));
+            break;
+
+        case device_type::pdo:
+            Status = STATUS_SUCCESS;
             break;
 
         default:
@@ -1252,18 +1238,18 @@ void read_registry(PUNICODE_STRING regpath) {
     ZwClose(h);
 }
 
-NTSTATUS set_device::system_control(PIRP Irp, bool* no_complete) {
+static NTSTATUS set_system_control(set_device* set, PIRP Irp, bool* no_complete) {
     *no_complete = true;
 
     IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(attached_device, Irp);
+    return IoCallDriver(set->attached_device, Irp);
 }
 
-NTSTATUS control_device::system_control(PIRP Irp, bool* no_complete) {
+static NTSTATUS control_system_control(control_device* control, PIRP Irp, bool* no_complete) {
     *no_complete = true;
 
     IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(attached_device, Irp);
+    return IoCallDriver(control->attached_device, Irp);
 }
 
 static NTSTATUS drv_system_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
@@ -1278,11 +1264,11 @@ static NTSTATUS drv_system_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 
     switch (*(enum device_type*)DeviceObject->DeviceExtension) {
         case device_type::control:
-            Status = ((control_device*)(DeviceObject->DeviceExtension))->system_control(Irp, &no_complete);
+            Status = control_system_control((control_device*)(DeviceObject->DeviceExtension), Irp, &no_complete);
             break;
 
         case device_type::set:
-            Status = ((set_device*)(DeviceObject->DeviceExtension))->system_control(Irp, &no_complete);
+            Status = set_system_control((set_device*)(DeviceObject->DeviceExtension), Irp, &no_complete);
             break;
 
         default:
@@ -1364,7 +1350,6 @@ extern "C" NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_
                                     nullptr, nullptr, 0, &cde->buspdo);
     if (!NT_SUCCESS(Status)) {
         ERR("IoReportDetectedDevice returned %08x\n", Status);
-        cde->control_device::~control_device();
         IoDeleteDevice(master_devobj);
         return Status;
     }
@@ -1385,7 +1370,6 @@ extern "C" NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_
                                             (PVOID)&GUID_DEVINTERFACE_VOLUME, DriverObject, volume_notification, DriverObject, &notification_entry);
     if (!NT_SUCCESS(Status)) {
         ERR("IoRegisterPlugPlayNotification returned %08x\n", Status);
-        cde->control_device::~control_device();
         IoDeleteDevice(master_devobj);
         return Status;
     }
@@ -1395,7 +1379,6 @@ extern "C" NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_
     if (!NT_SUCCESS(Status)) {
         ERR("IoRegisterPlugPlayNotification returned %08x\n", Status);
         IoUnregisterPlugPlayNotificationEx(notification_entry);
-        cde->control_device::~control_device();
         IoDeleteDevice(master_devobj);
         return Status;
     }
@@ -1406,7 +1389,6 @@ extern "C" NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_
         ERR("IoRegisterPlugPlayNotification returned %08x\n", Status);
         IoUnregisterPlugPlayNotificationEx(notification_entry2);
         IoUnregisterPlugPlayNotificationEx(notification_entry);
-        cde->control_device::~control_device();
         IoDeleteDevice(master_devobj);
         return Status;
     }
