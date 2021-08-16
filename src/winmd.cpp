@@ -610,7 +610,7 @@ static NTSTATUS set_close(set_device* set) {
 
         IoDetachDevice(set->attached_device);
 
-        set->set_device::~set_device();
+        ExDeleteResourceLite(&set->lock);
         IoDeleteDevice(devobj);
     }
 

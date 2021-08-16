@@ -258,7 +258,7 @@ static NTSTATUS set_pnp(set_device* set, PIRP Irp, bool* no_complete) {
 
                 IoDetachDevice(set->attached_device);
 
-                set->set_device::~set_device();
+                ExDeleteResourceLite(&set->lock);
                 IoDeleteDevice(devobj);
             }
 
@@ -381,10 +381,13 @@ static NTSTATUS add_set_device(set_pdo* pdo) {
 
     voldev->Flags |= DO_DIRECT_IO;
 
-    new (voldev->DeviceExtension) set_device(pdo, voldev);
-
     sd = (set_device*)voldev->DeviceExtension;
     sd->type = device_type::set;
+    sd->pdo = pdo;
+    sd->devobj = voldev;
+    sd->open_count = 0;
+
+    ExInitializeResourceLite(&sd->lock);
 
     Status = IoRegisterDeviceInterface(pdo->pdo, &GUID_DEVINTERFACE_VOLUME, nullptr, &pdo->bus_name);
     if (!NT_SUCCESS(Status))

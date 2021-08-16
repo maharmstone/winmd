@@ -217,21 +217,12 @@ struct partial_chunk {
 
 class set_pdo;
 
-class set_device {
-public:
-    set_device(set_pdo* pdo, PDEVICE_OBJECT devobj) : pdo(pdo), devobj(devobj) {
-        ExInitializeResourceLite(&lock);
-    }
-
-    ~set_device() {
-        ExDeleteResourceLite(&lock);
-    }
-
+struct set_device {
     enum device_type type;
     set_pdo* pdo;
     PDEVICE_OBJECT devobj;
     PDEVICE_OBJECT attached_device;
-    LONG open_count = 0;
+    LONG open_count;
     ERESOURCE lock;
 };
 
