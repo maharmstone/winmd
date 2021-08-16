@@ -226,7 +226,11 @@ set_pdo::~set_pdo() {
     while (!IsListEmpty(&children)) {
         auto c = CONTAINING_RECORD(RemoveHeadList(&children), set_child, list_entry);
 
-        c->set_child::~set_child();
+        ObDereferenceObject(c->fileobj);
+
+        if (c->devpath.Buffer)
+            ExFreePool(c->devpath.Buffer);
+
         ExFreePool(c);
     }
 
@@ -239,35 +243,6 @@ set_pdo::~set_pdo() {
     ExDeleteResourceLite(&partial_chunks_lock);
 }
 
-set_child::set_child(PDEVICE_OBJECT device, PFILE_OBJECT fileobj, PUNICODE_STRING devpath, mdraid_disk_info* disk_info) : device(device), fileobj(fileobj) {
-    ObReferenceObject(fileobj);
-
-    Status = STATUS_SUCCESS;
-
-    RtlCopyMemory(&this->disk_info, disk_info, sizeof(mdraid_disk_info));
-
-    this->devpath.Length = this->devpath.MaximumLength = devpath->Length;
-
-    if (devpath->Length > 0) {
-        this->devpath.Buffer = (WCHAR*)ExAllocatePoolWithTag(NonPagedPool, this->devpath.Length, ALLOC_TAG);
-
-        if (this->devpath.Buffer)
-            RtlCopyMemory(this->devpath.Buffer, devpath->Buffer, this->devpath.Length);
-        else {
-            ERR("out of memory\n");
-            Status = STATUS_INSUFFICIENT_RESOURCES;
-        }
-    } else
-        this->devpath.Buffer = nullptr;
-}
-
-set_child::~set_child() {
-    ObDereferenceObject(fileobj);
-
-    if (devpath.Buffer)
-        ExFreePool(devpath.Buffer);
-}
-
 static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_STRING devpath, mdraid_superblock* sb) {
     set_pdo* sd;
 
@@ -277,14 +252,33 @@ static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_S
         return;
     }
 
-    new (c) set_child(devobj, fileobj, devpath, &sb->disk_info);
+    c->device = devobj;
+    c->fileobj = fileobj;
 
-    if (!NT_SUCCESS(c->Status)) {
-        ERR("set_child constructor returned %08x\n", c->Status);
-        c->set_child::~set_child();
-        ExFreePool(c);
-        return;
-    }
+    ObReferenceObject(fileobj);
+
+    RtlCopyMemory(&c->disk_info, &sb->disk_info, sizeof(mdraid_disk_info));
+
+    c->devpath.Length = c->devpath.MaximumLength = devpath->Length;
+
+    if (devpath->Length > 0) {
+        c->devpath.Buffer = (WCHAR*)ExAllocatePoolWithTag(NonPagedPool, c->devpath.Length, ALLOC_TAG);
+
+        if (c->devpath.Buffer)
+            RtlCopyMemory(c->devpath.Buffer, devpath->Buffer, c->devpath.Length);
+        else {
+            ERR("out of memory\n");
+
+            ObDereferenceObject(c->fileobj);
+
+            if (c->devpath.Buffer)
+                ExFreePool(c->devpath.Buffer);
+
+            ExFreePool(c);
+            return;
+        }
+    } else
+        c->devpath.Buffer = nullptr;
 
     {
         mountmgr mm;
@@ -499,7 +493,11 @@ static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_S
     return;
 
 fail:
-    c->set_child::~set_child();
+    ObDereferenceObject(c->fileobj);
+
+    if (c->devpath.Buffer)
+        ExFreePool(c->devpath.Buffer);
+
     ExFreePool(c);
 
     ExReleaseResourceLite(&dev_lock);
@@ -634,7 +632,11 @@ static void child_removed(set_pdo* pdo, set_child* sc) {
 
     RemoveEntryList(&sc->list_entry);
 
-    sc->set_child::~set_child();
+    ObDereferenceObject(sc->fileobj);
+
+    if (sc->devpath.Buffer)
+        ExFreePool(sc->devpath.Buffer);
+
     ExFreePool(sc);
 
     // FIXME - send PNP messages(?)

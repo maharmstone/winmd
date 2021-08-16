@@ -195,17 +195,12 @@ struct mdraid_superblock {
 
 #pragma pack(pop)
 
-class set_child {
-public:
-    set_child(PDEVICE_OBJECT device, PFILE_OBJECT fileobj, PUNICODE_STRING devpath, mdraid_disk_info* disk_info);
-    ~set_child();
-
+struct set_child {
     PDEVICE_OBJECT device;
     PFILE_OBJECT fileobj;
     mdraid_disk_info disk_info;
     UNICODE_STRING devpath;
     LIST_ENTRY list_entry;
-    NTSTATUS Status;
 };
 
 struct partial_chunk {
