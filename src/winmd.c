@@ -184,9 +184,9 @@ static NTSTATUS sync_read_phys(PDEVICE_OBJECT DeviceObject, PFILE_OBJECT FileObj
 
         Status = STATUS_SUCCESS;
 
-        seh_try {
+        try {
             MmProbeAndLockPages(Irp->MdlAddress, KernelMode, IoWriteAccess);
-        } seh_except (EXCEPTION_EXECUTE_HANDLER) {
+        } except (EXCEPTION_EXECUTE_HANDLER) {
             Status = GetExceptionCode();
         }
 

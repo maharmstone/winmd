@@ -155,9 +155,9 @@ NTSTATUS read_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     if (!mdl_locked) {
         Status = STATUS_SUCCESS;
 
-        seh_try {
+        try {
             MmProbeAndLockPages(Irp->MdlAddress, KernelMode, IoWriteAccess);
-        } seh_except (EXCEPTION_EXECUTE_HANDLER) {
+        } except (EXCEPTION_EXECUTE_HANDLER) {
             Status = GetExceptionCode();
         }
 
@@ -331,9 +331,9 @@ NTSTATUS write_raid0(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     if (!mdl_locked) {
         Status = STATUS_SUCCESS;
 
-        seh_try {
+        try {
             MmProbeAndLockPages(Irp->MdlAddress, KernelMode, IoReadAccess);
-        } seh_except (EXCEPTION_EXECUTE_HANDLER) {
+        } except (EXCEPTION_EXECUTE_HANDLER) {
             Status = GetExceptionCode();
         }
 

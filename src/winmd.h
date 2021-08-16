@@ -80,14 +80,16 @@ extern bool have_sse2;
 #define TRACE(s, ...) do { } while (0);
 #endif
 
-#ifdef _MSC_VER
-#define seh_try __try
-#define seh_except __except
-#define seh_finally __finally
+#if defined(_MSC_VER) || defined(__clang__)
+#define try __try
+#define except __except
+#define finally __finally
+#define leave __leave
 #else
-#define seh_try if (1)
-#define seh_except(x) if (0 && (x))
-#define seh_finally if (1)
+#define try if (1)
+#define except(x) if (0 && (x))
+#define finally if (1)
+#define leave
 #endif
 
 enum device_type {
