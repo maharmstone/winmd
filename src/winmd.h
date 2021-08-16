@@ -92,8 +92,16 @@ extern bool have_sse2;
 #define seh_finally if (1)
 #endif
 
+enum class device_type {
+    control,
+    set,
+    pdo
+};
+
 class device {
 public:
+    enum device_type type;
+
     virtual NTSTATUS create(PIRP Irp);
     virtual NTSTATUS read(PIRP Irp, bool* no_complete);
     virtual NTSTATUS write(PIRP Irp, bool* no_complete);
@@ -105,7 +113,7 @@ public:
     virtual NTSTATUS system_control(PIRP Irp, bool* no_complete);
 };
 
-class control_device : device {
+class control_device : public device {
 public:
     NTSTATUS create(PIRP Irp) override;
     NTSTATUS pnp(PIRP Irp, bool* no_complete) override;
@@ -229,7 +237,7 @@ struct partial_chunk {
 
 class set_pdo;
 
-class set_device : device {
+class set_device : public device {
 public:
     set_device(set_pdo* pdo, PDEVICE_OBJECT devobj) : pdo(pdo), devobj(devobj) {
         ExInitializeResourceLite(&lock);
@@ -254,7 +262,7 @@ public:
     ERESOURCE lock;
 };
 
-class set_pdo : device {
+class set_pdo : public device {
 public:
     set_pdo();
     ~set_pdo();

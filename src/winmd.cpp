@@ -431,6 +431,7 @@ static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_S
     newdev->Flags |= DO_BUS_ENUMERATED_DEVICE;
 
     sd = new (newdev->DeviceExtension) set_pdo;
+    sd->type = device_type::pdo;
     sd->pdo = newdev;
     sd->stack_size = devobj->StackSize + 1;
     sd->dev_sector_size = devobj->SectorSize == 0 ? 512 : devobj->SectorSize;
@@ -1328,6 +1329,8 @@ extern "C" NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_
     }
 
     auto cde = new (master_devobj->DeviceExtension) control_device;
+
+    cde->type = device_type::control;
 
     ExInitializeResourceLite(&dev_lock);
 

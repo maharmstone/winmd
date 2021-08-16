@@ -372,6 +372,7 @@ static NTSTATUS add_set_device(set_pdo* pdo) {
     new (voldev->DeviceExtension) set_device(pdo, voldev);
 
     sd = (set_device*)voldev->DeviceExtension;
+    sd->type = device_type::set;
 
     Status = IoRegisterDeviceInterface(pdo->pdo, &GUID_DEVINTERFACE_VOLUME, nullptr, &pdo->bus_name);
     if (!NT_SUCCESS(Status))
