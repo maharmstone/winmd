@@ -205,7 +205,7 @@ struct partial_chunk {
     alignas(16) uint8_t data[1];
 };
 
-class set_pdo;
+struct set_pdo;
 
 struct set_device {
     enum device_type type;
@@ -216,10 +216,7 @@ struct set_device {
     ERESOURCE lock;
 };
 
-class set_pdo {
-public:
-    ~set_pdo();
-
+struct set_pdo {
     enum device_type type;
     ERESOURCE lock;
     mdraid_array_info array_info;

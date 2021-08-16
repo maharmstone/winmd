@@ -217,12 +217,12 @@ static WCHAR hex_digit(uint8_t c) {
 }
 
 // FIXME - make sure this gets called
-set_pdo::~set_pdo() {
-    if (child_list)
-        ExFreePool(child_list);
+void unit_set_pdo(set_pdo* pdo) {
+    if (pdo->child_list)
+        ExFreePool(pdo->child_list);
 
-    while (!IsListEmpty(&children)) {
-        auto c = CONTAINING_RECORD(RemoveHeadList(&children), set_child, list_entry);
+    while (!IsListEmpty(&pdo->children)) {
+        auto c = CONTAINING_RECORD(RemoveHeadList(&pdo->children), set_child, list_entry);
 
         ObDereferenceObject(c->fileobj);
 
@@ -232,13 +232,13 @@ set_pdo::~set_pdo() {
         ExFreePool(c);
     }
 
-    if (bus_name.Buffer)
-        ExFreePool(bus_name.Buffer);
+    if (pdo->bus_name.Buffer)
+        ExFreePool(pdo->bus_name.Buffer);
 
     // FIXME - make sure partial chunks list is empty
 
-    ExDeleteResourceLite(&lock);
-    ExDeleteResourceLite(&partial_chunks_lock);
+    ExDeleteResourceLite(&pdo->lock);
+    ExDeleteResourceLite(&pdo->partial_chunks_lock);
 }
 
 static void device_found(PDEVICE_OBJECT devobj, PFILE_OBJECT fileobj, PUNICODE_STRING devpath, mdraid_superblock* sb) {
