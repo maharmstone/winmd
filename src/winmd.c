@@ -1208,6 +1208,7 @@ static NTSTATUS drv_close(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     return Status;
 }
 
+#ifdef _DEBUG
 static void get_registry_value(HANDLE h, const WCHAR* string, ULONG type, void* val, ULONG size) {
     ULONG kvfilen;
     UNICODE_STRING us;
@@ -1267,12 +1268,11 @@ void read_registry(PUNICODE_STRING regpath) {
         return;
     }
 
-#ifdef _DEBUG
     get_registry_value(h, L"DebugLogLevel", REG_DWORD, &debug_log_level, sizeof(debug_log_level));
-#endif
 
     ZwClose(h);
 }
+#endif
 
 static NTSTATUS set_system_control(set_device* set, PIRP Irp, bool* no_complete) {
     *no_complete = true;
@@ -1353,9 +1353,9 @@ NTSTATUS __stdcall DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING Regi
     DriverObject->MajorFunction[IRP_MJ_SHUTDOWN] = (PDRIVER_DISPATCH)drv_shutdown;
     DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = (PDRIVER_DISPATCH)drv_system_control;
 
+#ifdef _DEBUG
     read_registry(RegistryPath);
 
-#ifdef _DEBUG
     if (debug_log_level > 0) {
         NTSTATUS Status;
         UNICODE_STRING us;
