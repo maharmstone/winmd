@@ -19,6 +19,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <ntstrsafe.h>
 
 #ifdef _DEBUG
 typedef struct {
@@ -122,7 +123,7 @@ void log(const char* func, const char* msg, ...) {
     PIRP Irp;
     PIO_STACK_LOCATION IrpSp;
 
-    size_t buf_size = 1024;
+    static const size_t buf_size = 1024;
     char* buf2 = ExAllocatePoolWithTag(NonPagedPool, buf_size, ALLOC_TAG);
 
     if (!buf2) {
@@ -130,41 +131,14 @@ void log(const char* func, const char* msg, ...) {
         return;
     }
 
-    _snprintf(buf2, buf_size, "%p:%s:", PsGetCurrentThread(), func);
+    sprintf(buf2, "%p:%s:", PsGetCurrentThread(), func);
     size_t prefix_size = strlen(buf2);
     char* buf = &buf2[prefix_size];
 
     va_list ap;
     va_start(ap, msg);
-    int retlen = _vsnprintf(buf, buf_size - prefix_size, msg, ap);
 
-    if (retlen < 0) {
-        DbgPrint("vsnprintf encoding error\n");
-        va_end(ap);
-        ExFreePool(buf2);
-        return;
-    }
-
-    if ((size_t)retlen > buf_size - prefix_size) { // data truncated
-        buf_size = retlen + prefix_size + 1;
-
-        char* buf3 = ExAllocatePoolWithTag(NonPagedPool, buf_size, ALLOC_TAG);
-        if (!buf3) {
-            DbgPrint("Out of memory.\n");
-            va_end(ap);
-            ExFreePool(buf2);
-            return;
-        }
-
-        RtlCopyMemory(buf3, buf2, prefix_size);
-
-        ExFreePool(buf2);
-        buf2 = buf3;
-
-        char* buf = &buf2[prefix_size];
-
-        _vsnprintf(buf, buf_size - prefix_size, msg, ap);
-    }
+    RtlStringCbVPrintfA(buf, buf_size - strlen(buf2), msg, ap);
 
     if (logger->unloading || !logger->comfo) {
         DbgPrint(buf2);

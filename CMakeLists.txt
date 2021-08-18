@@ -69,7 +69,7 @@ endif()
 
 add_definitions(-DNTDDI_VERSION=0x0A000007)
 
-target_compile_definitions(winmd PUBLIC _KERNEL_MODE WIN9X_COMPAT_SPINLOCK)
+target_compile_definitions(winmd PUBLIC _KERNEL_MODE WIN9X_COMPAT_SPINLOCK _NO_CRT_STDIO_INLINE)
 
 if(MSVC)
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86")
