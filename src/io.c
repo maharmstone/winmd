@@ -487,7 +487,7 @@ NTSTATUS add_partial_chunk(set_pdo* pdo, uint64_t offset, uint32_t length, void*
             RtlClearBits(&pc->bmp, (ULONG)((offset - chunk_offset) / 512), length / 512);
 
             if (RtlAreBitsClear(&pc->bmp, 0, pdo->array_info.chunksize * data_disks)) {
-                NTSTATUS Status = flush_partial_chunk(pdo, pc);
+                Status = flush_partial_chunk(pdo, pc);
                 if (!NT_SUCCESS(Status)) {
                     ERR("flush_partial_chunk returned %08x\n", Status);
                     goto end;
