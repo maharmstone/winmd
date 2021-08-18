@@ -695,8 +695,6 @@ static void child_removed(set_pdo* pdo, set_child* sc) {
         control_device* cde = (control_device*)master_devobj->DeviceExtension;
         IoInvalidateDeviceRelations(cde->buspdo, BusRelations);
     }
-
-    ExReleaseResourceLite(&pdo->lock);
 }
 
 void volume_removal(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
@@ -719,6 +717,7 @@ void volume_removal(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
 
             if (sc->devpath.Length == devpath->Length && RtlCompareMemory(sc->devpath.Buffer, devpath->Buffer, devpath->Length) == devpath->Length) {
                 child_removed(sd, sc);
+                ExReleaseResourceLite(&sd->lock);
                 found = true;
                 break;
             }
