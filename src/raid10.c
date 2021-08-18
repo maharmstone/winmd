@@ -32,6 +32,7 @@ typedef struct {
     LIST_ENTRY list_entry;
 } io_context_raid10;
 
+_Function_class_(IO_COMPLETION_ROUTINE)
 static NTSTATUS __stdcall io_completion_raid10(PDEVICE_OBJECT devobj, PIRP Irp, PVOID ctx) {
     io_context_raid10* context = ctx;
 

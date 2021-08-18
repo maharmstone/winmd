@@ -28,6 +28,7 @@ typedef struct {
 
 static const WCHAR log_device[] = L"\\Device\\Serial0";
 
+_Function_class_(KSTART_ROUTINE)
 static void __stdcall serial_thread(void* context) {
     LARGE_INTEGER due_time;
     KTIMER timer;
@@ -106,6 +107,7 @@ void stop_serial_logger() {
     ExDeleteResourceLite(&logger->log_lock);
 }
 
+_Function_class_(IO_COMPLETION_ROUTINE)
 static NTSTATUS __stdcall dbg_completion(PDEVICE_OBJECT devobj, PIRP Irp, PVOID ctx) {
     logger_context* context = ctx;
 

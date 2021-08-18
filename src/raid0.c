@@ -30,6 +30,7 @@ typedef struct {
     PFN_NUMBER* pfnp;
 } io_context_raid0;
 
+_Function_class_(IO_COMPLETION_ROUTINE)
 static NTSTATUS __stdcall io_completion_raid0(PDEVICE_OBJECT devobj, PIRP Irp, PVOID ctx) {
     io_context_raid0* context = ctx;
 

@@ -75,6 +75,7 @@ typedef struct {
     PIO_WORKITEM work_item;
 } pnp_callback_context;
 
+_Function_class_(IO_WORKITEM_ROUTINE)
 static void __stdcall do_pnp_callback(PDEVICE_OBJECT devobj, PVOID con) {
     pnp_callback_context* context = (pnp_callback_context*)con;
 
@@ -126,6 +127,7 @@ typedef struct {
     IO_STATUS_BLOCK iosb;
 } read_context;
 
+_Function_class_(IO_COMPLETION_ROUTINE)
 static NTSTATUS __stdcall read_completion(PDEVICE_OBJECT devobj, PIRP Irp, PVOID conptr) {
     read_context* context = (read_context*)conptr;
 
@@ -736,6 +738,7 @@ void volume_removal(PDRIVER_OBJECT DriverObject, PUNICODE_STRING devpath) {
     ExReleaseResourceLite(&dev_lock);
 }
 
+_Function_class_(DRIVER_NOTIFICATION_CALLBACK_ROUTINE)
 static NTSTATUS __stdcall volume_notification(PVOID NotificationStructure, PVOID Context) {
     DEVICE_INTERFACE_CHANGE_NOTIFICATION* dicn = (DEVICE_INTERFACE_CHANGE_NOTIFICATION*)NotificationStructure;
     PDRIVER_OBJECT DriverObject = (PDRIVER_OBJECT)Context;
@@ -750,6 +753,7 @@ static NTSTATUS __stdcall volume_notification(PVOID NotificationStructure, PVOID
     return STATUS_SUCCESS;
 }
 
+_Function_class_(DRIVER_UNLOAD)
 static void __stdcall DriverUnload(PDRIVER_OBJECT DriverObject) {
     TRACE("(%p)\n", DriverObject);
 
@@ -1050,6 +1054,8 @@ bool is_top_level(PIRP Irp) {
     return false;
 }
 
+_Dispatch_type_(IRP_MJ_CREATE)
+_Function_class_(DRIVER_DISPATCH)
 NTSTATUS drv_create(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     NTSTATUS Status;
     bool top_level;
@@ -1084,6 +1090,8 @@ NTSTATUS drv_create(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     return Status;
 }
 
+_Dispatch_type_(IRP_MJ_DEVICE_CONTROL)
+_Function_class_(DRIVER_DISPATCH)
 NTSTATUS drv_device_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     NTSTATUS Status;
     bool top_level;
@@ -1112,6 +1120,8 @@ NTSTATUS drv_device_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     return Status;
 }
 
+_Dispatch_type_(IRP_MJ_SHUTDOWN)
+_Function_class_(DRIVER_DISPATCH)
 NTSTATUS drv_shutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     NTSTATUS Status;
     bool top_level;
@@ -1140,6 +1150,8 @@ NTSTATUS drv_shutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     return Status;
 }
 
+_Dispatch_type_(IRP_MJ_POWER)
+_Function_class_(DRIVER_DISPATCH)
 NTSTATUS drv_power(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     NTSTATUS Status;
     bool top_level;
@@ -1176,6 +1188,8 @@ static void check_cpu() {
    have_sse2 = cpuInfo[3] & (1 << 26);
 }
 
+_Dispatch_type_(IRP_MJ_CLOSE)
+_Function_class_(DRIVER_DISPATCH)
 static NTSTATUS drv_close(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     NTSTATUS Status;
     bool top_level;
@@ -1288,6 +1302,8 @@ static NTSTATUS control_system_control(control_device* control, PIRP Irp, bool* 
     return IoCallDriver(control->attached_device, Irp);
 }
 
+_Dispatch_type_(IRP_MJ_SYSTEM_CONTROL)
+_Function_class_(DRIVER_DISPATCH)
 static NTSTATUS drv_system_control(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     NTSTATUS Status;
     bool top_level;

@@ -21,8 +21,6 @@
 
 static const int64_t flush_interval = 5;
 
-static NTSTATUS __stdcall io_completion(PDEVICE_OBJECT devobj, PIRP Irp, PVOID ctx);
-
 typedef struct {
     PIRP Irp;
     KEVENT Event;
@@ -36,6 +34,7 @@ typedef struct {
     LIST_ENTRY list_entry;
 } io_context;
 
+_Function_class_(IO_COMPLETION_ROUTINE)
 static NTSTATUS __stdcall io_completion(PDEVICE_OBJECT devobj, PIRP Irp, PVOID ctx) {
     io_context* context = ctx;
 
@@ -208,6 +207,8 @@ static NTSTATUS set_read(set_device* set, PIRP Irp, bool* no_complete) {
     }
 }
 
+_Dispatch_type_(IRP_MJ_READ)
+_Function_class_(DRIVER_DISPATCH)
 NTSTATUS drv_read(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     NTSTATUS Status;
     bool top_level;
@@ -432,6 +433,7 @@ void flush_chunks(set_pdo* pdo) {
     ExReleaseResourceLite(&pdo->partial_chunks_lock);
 }
 
+_Function_class_(KSTART_ROUTINE)
 void __stdcall flush_thread(void* context) {
     set_pdo* sd = (set_pdo*)context;
 
@@ -622,6 +624,8 @@ end:
     return Status;
 }
 
+_Dispatch_type_(IRP_MJ_WRITE)
+_Function_class_(DRIVER_DISPATCH)
 NTSTATUS drv_write(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     NTSTATUS Status;
     bool top_level;

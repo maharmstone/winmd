@@ -278,6 +278,8 @@ static NTSTATUS set_pnp(set_device* set, PIRP Irp, bool* no_complete) {
     return IoCallDriver(set->attached_device, Irp);
 }
 
+_Dispatch_type_(IRP_MJ_PNP)
+_Function_class_(DRIVER_DISPATCH)
 NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
     NTSTATUS Status;
     bool top_level;
@@ -416,6 +418,7 @@ end:
     return Status;
 }
 
+_Function_class_(DRIVER_ADD_DEVICE)
 NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject) {
     TRACE("(%p, %p)\n", DriverObject, PhysicalDeviceObject);
 

@@ -26,6 +26,7 @@ typedef struct {
     LIST_ENTRY list_entry;
 } io_context_linear;
 
+_Function_class_(IO_COMPLETION_ROUTINE)
 static NTSTATUS __stdcall io_completion_linear(PDEVICE_OBJECT devobj, PIRP Irp, PVOID ctx) {
     io_context_linear* context = ctx;
 

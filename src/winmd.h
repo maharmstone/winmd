@@ -64,6 +64,10 @@ void stop_serial_logger();
 #define FILE_DEVICE_ALLOW_APPCONTAINER_TRAVERSAL 0x00020000
 #endif
 
+#ifndef _MSC_VER
+#define _Dispatch_type_(a)
+#endif
+
 extern uint32_t debug_log_level;
 extern bool have_sse2;
 
@@ -264,9 +268,17 @@ static __inline void get_raid0_offset(uint64_t off, uint64_t stripe_length, uint
 bool is_top_level(PIRP Irp);
 
 // io.cpp
+_Dispatch_type_(IRP_MJ_READ)
+_Function_class_(DRIVER_DISPATCH)
 NTSTATUS drv_read(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+
+_Dispatch_type_(IRP_MJ_WRITE)
+_Function_class_(DRIVER_DISPATCH)
 NTSTATUS drv_write(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+
+_Function_class_(KSTART_ROUTINE)
 void __stdcall flush_thread(void* context);
+
 void do_xor(uint8_t* buf1, uint8_t* buf2, uint32_t len);
 NTSTATUS add_partial_chunk(set_pdo* pdo, uint64_t offset, uint32_t length, void* data);
 void flush_chunks(set_pdo* pdo);
@@ -274,7 +286,11 @@ uint32_t get_parity_volume(set_pdo* pdo, uint64_t offset);
 uint32_t get_physical_stripe(set_pdo* pdo, uint32_t stripe, uint32_t parity);
 
 // pnp.cpp
+_Dispatch_type_(IRP_MJ_PNP)
+_Function_class_(DRIVER_DISPATCH)
 NTSTATUS drv_pnp(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+
+_Function_class_(DRIVER_ADD_DEVICE)
 NTSTATUS __stdcall AddDevice(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT PhysicalDeviceObject);
 
 // raid0.cpp
