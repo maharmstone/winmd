@@ -790,8 +790,10 @@ static void __stdcall DriverUnload(PDRIVER_OBJECT DriverObject) {
 
     ExReleaseResourceLite(&dev_lock);
 
-    control_device* cde = (control_device*)master_devobj->DeviceExtension;
-    IoInvalidateDeviceRelations(cde->buspdo, BusRelations);
+    if (master_devobj) {
+        control_device* cde = (control_device*)master_devobj->DeviceExtension;
+        IoInvalidateDeviceRelations(cde->buspdo, BusRelations);
+    }
 
     ExDeleteResourceLite(&dev_lock);
 
