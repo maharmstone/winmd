@@ -49,7 +49,7 @@ NTSTATUS read_raid1(set_pdo* pdo, PIRP Irp, bool* no_complete) {
     return Status;
 }
 
-static NTSTATUS __stdcall io_completion_raid1(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
+static NTSTATUS __stdcall io_completion_raid1(PDEVICE_OBJECT devobj, PIRP Irp, PVOID ctx) {
     io_context_raid1* context = ctx;
 
     context->iosb = Irp->IoStatus;

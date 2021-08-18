@@ -106,7 +106,7 @@ void stop_serial_logger() {
     ExDeleteResourceLite(&logger->log_lock);
 }
 
-static NTSTATUS __stdcall dbg_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
+static NTSTATUS __stdcall dbg_completion(PDEVICE_OBJECT devobj, PIRP Irp, PVOID ctx) {
     logger_context* context = ctx;
 
     context->iosb = Irp->IoStatus;

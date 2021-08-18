@@ -74,7 +74,7 @@ typedef struct {
     PIO_WORKITEM work_item;
 } pnp_callback_context;
 
-static void __stdcall do_pnp_callback(PDEVICE_OBJECT, PVOID con) {
+static void __stdcall do_pnp_callback(PDEVICE_OBJECT devobj, PVOID con) {
     pnp_callback_context* context = (pnp_callback_context*)con;
 
     context->func(context->DriverObject, &context->name);
@@ -125,7 +125,7 @@ typedef struct {
     IO_STATUS_BLOCK iosb;
 } read_context;
 
-static NTSTATUS __stdcall read_completion(PDEVICE_OBJECT, PIRP Irp, PVOID conptr) {
+static NTSTATUS __stdcall read_completion(PDEVICE_OBJECT devobj, PIRP Irp, PVOID conptr) {
     read_context* context = (read_context*)conptr;
 
     context->iosb = Irp->IoStatus;

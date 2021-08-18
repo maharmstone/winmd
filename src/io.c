@@ -21,7 +21,7 @@
 
 static const int64_t flush_interval = 5;
 
-static NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx);
+static NTSTATUS __stdcall io_completion(PDEVICE_OBJECT devobj, PIRP Irp, PVOID ctx);
 
 typedef struct {
     PIRP Irp;
@@ -36,7 +36,7 @@ typedef struct {
     LIST_ENTRY list_entry;
 } io_context;
 
-static NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
+static NTSTATUS __stdcall io_completion(PDEVICE_OBJECT devobj, PIRP Irp, PVOID ctx) {
     io_context* context = ctx;
 
     context->iosb = Irp->IoStatus;
