@@ -16,6 +16,7 @@
  * along with WinMD.  If not, see <http://www.gnu.org/licenses/>. */
 
 #include "winmd.h"
+#include <stddef.h>
 #include <ntddstor.h>
 
 bool no_pnp = false;

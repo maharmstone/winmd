@@ -35,6 +35,7 @@
 
 #include <wdmguid.h>
 #include <mountdev.h>
+#include <stddef.h>
 
 #ifdef _MSC_VER
 #include <intrin.h>
