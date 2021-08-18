@@ -118,7 +118,7 @@ static NTSTATUS __stdcall dbg_completion(PDEVICE_OBJECT devobj, PIRP Irp, PVOID 
     return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
-void log(const char* func, const char* msg, ...) {
+void do_log(const char* func, const char* msg, ...) {
     NTSTATUS Status;
     PIRP Irp;
     PIO_STACK_LOCATION IrpSp;

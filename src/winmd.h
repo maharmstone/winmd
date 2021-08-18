@@ -41,7 +41,7 @@ typedef struct {
 extern serial_logger* logger;
 
 // logger.cpp
-void log(const char* func, const char* msg, ...);
+void do_log(const char* func, const char* msg, ...);
 void init_serial_logger();
 void stop_serial_logger();
 #endif
@@ -72,10 +72,10 @@ extern uint32_t debug_log_level;
 extern bool have_sse2;
 
 #ifdef _DEBUG
-#define ERR(s, ...) do { if (logger && debug_log_level > 0) { log(funcname, s, ##__VA_ARGS__); } } while (0);
-#define FIXME(s, ...) do { if (logger && debug_log_level > 0) { log(funcname, s, ##__VA_ARGS__); } } while (0);
-#define WARN(s, ...) do { if (logger && debug_log_level > 1) { log(funcname, s, ##__VA_ARGS__); } } while (0);
-#define TRACE(s, ...) do { if (logger && debug_log_level > 2) { log(funcname, s, ##__VA_ARGS__); } } while (0);
+#define ERR(s, ...) do { if (logger && debug_log_level > 0) { do_log(funcname, s, ##__VA_ARGS__); } } while (0);
+#define FIXME(s, ...) do { if (logger && debug_log_level > 0) { do_log(funcname, s, ##__VA_ARGS__); } } while (0);
+#define WARN(s, ...) do { if (logger && debug_log_level > 1) { do_log(funcname, s, ##__VA_ARGS__); } } while (0);
+#define TRACE(s, ...) do { if (logger && debug_log_level > 2) { do_log(funcname, s, ##__VA_ARGS__); } } while (0);
 #else
 #define ERR(s, ...) do { } while (0);
 #define FIXME(s, ...) do { } while (0);
