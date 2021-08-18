@@ -17,6 +17,9 @@ set(SRC_FILES src/winmd.c
     src/raid6.c
     ${CMAKE_CURRENT_BINARY_DIR}/winmd.rc)
 
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
 if(MSVC) # cmake bug 15170
     if(MSVC_C_ARCHITECTURE_ID STREQUAL "X86")
         set(CMAKE_SYSTEM_PROCESSOR "x86")

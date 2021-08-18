@@ -20,7 +20,6 @@
 #include <ntifs.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <stdalign.h>
 #include <uchar.h>
 #include <mountdev.h>
 
@@ -207,7 +206,11 @@ typedef struct {
     LIST_ENTRY list_entry;
     uint64_t offset;
     RTL_BITMAP bmp;
-    alignas(16) uint8_t data[1];
+#ifdef _MSC_VER
+    __declspec(align(16)) uint8_t data[1];
+#else
+    _Alignas(16) uint8_t data[1];
+#endif
 } partial_chunk;
 
 typedef struct _set_pdo set_pdo;
