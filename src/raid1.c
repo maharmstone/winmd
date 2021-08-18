@@ -50,7 +50,7 @@ NTSTATUS read_raid1(set_pdo* pdo, PIRP Irp, bool* no_complete) {
 }
 
 static NTSTATUS __stdcall io_completion_raid1(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
-    io_context_raid1* context = (io_context_raid1*)ctx;
+    io_context_raid1* context = ctx;
 
     context->iosb = Irp->IoStatus;
     KeSetEvent(&context->Event, 0, FALSE);

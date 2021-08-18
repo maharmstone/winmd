@@ -27,7 +27,7 @@ typedef struct {
 } io_context_linear;
 
 static NTSTATUS __stdcall io_completion_linear(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
-    io_context_linear* context = (io_context_linear*)ctx;
+    io_context_linear* context = ctx;
 
     context->iosb = Irp->IoStatus;
     KeSetEvent(&context->Event, 0, FALSE);

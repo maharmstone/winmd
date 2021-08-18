@@ -31,7 +31,7 @@ typedef struct {
 } io_context_raid0;
 
 static NTSTATUS __stdcall io_completion_raid0(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
-    io_context_raid0* context = (io_context_raid0*)ctx;
+    io_context_raid0* context = ctx;
 
     context->iosb = Irp->IoStatus;
     KeSetEvent(&context->Event, 0, FALSE);

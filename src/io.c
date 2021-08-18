@@ -37,7 +37,7 @@ typedef struct {
 } io_context;
 
 static NTSTATUS __stdcall io_completion(PDEVICE_OBJECT, PIRP Irp, PVOID ctx) {
-    io_context* context = (io_context*)ctx;
+    io_context* context = ctx;
 
     context->iosb = Irp->IoStatus;
     KeSetEvent(&context->Event, 0, FALSE);
